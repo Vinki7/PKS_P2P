@@ -1,40 +1,49 @@
+import sys
 import threading
 import time
 
 from ConnectionManager import ConnectionManager
+from Operations.OperationManager import OperationManager
+from UtilityHelpers.HeaderHelper import HeaderHelper
+
+
 # from Helpers import check_for_fin
-from KeepAliveManager import KeepAliveManager
-from ProtocolHandler import ProtocolHandler
 
 class Node:
     """
     Node represents the single peer, the concrete communication endpoint.
     Handles the business logic of listening and sending messages
     """
-    def __init__(self, ip_address:str, port:int):
-        self.ip_address = ip_address
-        self.port = port
+    def __init__(self, s_ip:str, s_port:int, r_ip:str, r_port:int):
+        self.sending_ip = s_ip
+        self.sending_port = s_port
+
+        self.receiving_ip = r_ip
+        self.receiving_port = r_port
+
+        self.connection_manager = ConnectionManager(self.sending_ip, self.sending_port, self.receiving_ip, self.receiving_port)
 
         self.target_ip = ""
         self.target_port = 0
 
-        self.protocol_handler = ProtocolHandler()
-        self.connection_manager = ConnectionManager(ip_address, port)
-        self.keep_alive_manager = KeepAliveManager(self.connection_manager)
+        self.operation_manager = None
 
-        self.is_active = False
-        self.connected = False
-        self.responding = False
-        self.managing_connection = False
 
         self.thread_lock = threading.Lock()
         self.stop_event = threading.Event()
 
-    def run(self):
         self.is_active = True
+        self.connected = False
+        self.responding = False
+
+    def run(self):
         listening_thread = threading.Thread(target=self.listen_for_messages)
         listening_thread.daemon = True
         listening_thread.start()
+
+        sending_thread = threading.Thread(target=self.messaging_manager)
+        sending_thread.daemon = True
+        sending_thread.start()
 
         try:
             while self.is_active:
@@ -45,13 +54,17 @@ class Node:
                         if connection_prompt.lower() == "y":
                             target_ip = str(input("Enter peer's IP: "))
                             target_port = int(input("Enter peer's port: "))
+                            time.sleep(0.2)
+
                             if not self.connected:
                                 self.responding = True
 
                                 self.target_ip = target_ip
                                 self.target_port = target_port
 
-                                self.initiate_connection(target_ip, target_port)
+                                self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+
+                                self.operation_manager.get_operation("i").execute()
 
                         elif connection_prompt.lower() == "n":
                             self.is_active = False
@@ -64,29 +77,20 @@ class Node:
                         print("Processing...\nPress Enter")
 
                 while self.connected and not self.responding:
-                    operation = str(input("Select operation:"
+                    self.clear_stdin()
+                    operation_code = str(input("Select operation:"
                                           "\n- send message (m)"
                                           "\n- send file (f)"
+                                          "\n- set fragment size (s)"
                                           "\n- close connection (c)"
                                           "\n- exit (e)"
                                           "\n→ "))
 
-                    operation = operation.lower()
-                    if operation == "e":
-                        self.close_application()
-                        continue
+                    self.clear_stdin()
+                    operation = self.operation_manager.get_operation(operation_code.lower())
 
-                    if operation == "m":
-                        self.send_message()
-
-                    elif operation == "f":
-                        pass
-
-                    elif operation == "c":
-                        # self.responding = True
-                        # self.connection_manager.close_connection_request(self.target_ip, self.target_port)
-                        pass
-
+                    if operation:
+                        operation.execute()
                     else:
                         print(f"Wrong operation code, please, try again...")
 
@@ -95,9 +99,16 @@ class Node:
             self.close_application()
 
 
+    def messaging_manager(self):
+        while self.is_active:
+            if self.target_ip is None or self.target_port is None:
+                continue
+            if not self.connection_manager.queue_is_empty():
+                self.connection_manager.send_fragment(self.target_ip, self.target_port)
+
     def listen_for_messages(self):
         """
-        Client listens at the port for messages.
+        Client listens at the receiving port for messages.
         When a connection is not established, the connection_establishment method which handles the handshake responses is being called.
         When the connection is established, the client listens on the port for messages.
 
@@ -108,17 +119,15 @@ class Node:
 
             if not self.connected:
                 with self.thread_lock:
-                    potential_dst_ip, potential_dst_port = self.connection_manager.connection_establishment()
+                    self.target_ip, self.target_port, self.connected = self.connection_manager.connection_establishment()
 
-                    if potential_dst_ip != "" and potential_dst_port > 0:
-                        self.target_ip = potential_dst_ip
-                        self.target_port = potential_dst_port
-                        self.connected = True
+                    if self.connected  and self.target_ip != "" and self.target_port > 0:
                         self.responding = False
+                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
 
-                    if potential_dst_ip == "" and potential_dst_port > 0:
-                        self.connected = False
+                    if not self.connected and self.target_ip != "" and self.target_port > 0:
                         self.responding = True
+                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
 
             while not self.responding and self.connected and not self.stop_event.is_set():
                 try:
@@ -148,7 +157,7 @@ class Node:
                                 print(f"\nReceived message: {data}")
 
                                 header = data[0][0]
-                                flags = self.protocol_handler.parse_flags(header[3])
+                                flags = HeaderHelper.parse_flags(header[3])
 
                                 if not self.connected and self.responding:
                                     print("Do you want to establish connection? (y/n): ", end='', flush=True)
@@ -177,7 +186,6 @@ class Node:
         :param target_port:
         :return:
         """
-        self.managing_connection = True
         self.connection_manager.send_connection_request(target_ip, target_port)
 
 
@@ -186,6 +194,7 @@ class Node:
         Method which handles message sending and also the message input
         :return:
         """
+        self.clear_stdin()
         message = str(input("Enter a message: "))
         self.send_data(message.encode())
 
@@ -235,17 +244,23 @@ class Node:
         if self.connected:
             self.stop_event.set()
             self.connected = False
-            self.connection_manager.socket.close()
+            self.connection_manager.sending_socket.close()
             # self.connection_manager.close_connection_request(self.target_ip, self.target_port)
             print("Disconnected")
 
         self.is_active = False
         self.responding = False
 
-if __name__ == "__main__":
-    src_ip = str(input("Enter your IP: "))
-    src_port = int(input("Enter your port: "))
+    @classmethod
+    def clear_stdin(cls):
+        sys.stdin.flush()
 
-    client_interface = Node(src_ip, src_port)
+if __name__ == "__main__":
+    ip = str(input("Enter IP: "))
+    receiving_port = int(input("Enter port for receiving: "))
+
+    sending_port = receiving_port - 1
+
+    client_interface = Node(ip, sending_port, ip, receiving_port)
 
     client_interface.run()
