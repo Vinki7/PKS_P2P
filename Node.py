@@ -2,9 +2,12 @@ import sys
 import threading
 import time
 
+from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
+from Model.Message import Message
 from Operations.OperationManager import OperationManager
 from UtilityHelpers.HeaderHelper import HeaderHelper
+import config as cfg
 
 
 # from Helpers import check_for_fin
@@ -23,18 +26,17 @@ class Node:
 
         self.connection_manager = ConnectionManager(self.sending_ip, self.sending_port, self.receiving_ip, self.receiving_port)
 
-        self.target_ip = ""
-        self.target_port = 0
+        self.target_ip = None
+        self.target_port = None
 
         self.operation_manager = None
-
 
         self.thread_lock = threading.Lock()
         self.stop_event = threading.Event()
 
         self.is_active = True
         self.connected = False
-        self.responding = False
+        self.processing_data = False
 
     def run(self):
         listening_thread = threading.Thread(target=self.listen_for_messages)
@@ -47,36 +49,11 @@ class Node:
 
         try:
             while self.is_active:
-                time.sleep(0.5)
-                if not self.responding and not self.connected:
-                    try:
-                        connection_prompt = str(input("Do you want to establish connection? (y/n):"))
-                        if connection_prompt.lower() == "y":
-                            target_ip = str(input("Enter peer's IP: "))
-                            target_port = int(input("Enter peer's port: "))
-                            time.sleep(0.2)
+                time.sleep(0.5) # wait for possible connection request
+                if not self.connected:
+                    self.connection_prompt()
 
-                            if not self.connected:
-                                self.responding = True
-
-                                self.target_ip = target_ip
-                                self.target_port = target_port
-
-                                self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
-
-                                self.operation_manager.get_operation("i").execute()
-
-                        elif connection_prompt.lower() == "n":
-                            self.is_active = False
-                            self.close_application()
-                        elif connection_prompt.lower() == '':
-                            print("Continuing...")
-                        else:
-                            print(f"Wrong choice, try again...")
-                    except ValueError as e:
-                        print("Processing...\nPress Enter")
-
-                while self.connected and not self.responding:
+                while self.connected and not self.processing_data:
                     self.clear_stdin()
                     operation_code = str(input("Select operation:"
                                           "\n- send message (m)"
@@ -98,6 +75,38 @@ class Node:
         except KeyboardInterrupt:
             self.close_application()
 
+    def connection_prompt(self):
+        try:
+            connection_prompt = str(input("Do you want to establish connection? (y/n):"))
+            if connection_prompt.lower() == "y":
+                target_ip = str(input("Enter peer's IP: "))
+                target_port = int(input("Enter peer's port: "))
+                time.sleep(0.2)  # wait for possible connection request
+
+                if not self.connected:
+                    self.target_ip = target_ip
+                    self.target_port = target_port
+
+                    self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+
+                    self.operation_manager.get_operation("i").execute()
+
+            elif connection_prompt.lower() == "n":
+                self.is_active = False
+                self.close_application()
+            elif connection_prompt.lower() == '':
+                print("Continuing...")
+            else:
+                print(f"Wrong choice, try again...")
+        except ValueError as e:
+            print("Processing...\nPress Enter")
+
+
+    def response_on_connection_attempt(self):
+        with self.thread_lock:
+            self.target_ip, self.target_port, self.connected = self.connection_manager.connection_establishment()
+            self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+
 
     def messaging_manager(self):
         while self.is_active:
@@ -105,6 +114,7 @@ class Node:
                 continue
             if not self.connection_manager.queue_is_empty():
                 self.connection_manager.send_fragment(self.target_ip, self.target_port)
+
 
     def listen_for_messages(self):
         """
@@ -118,121 +128,42 @@ class Node:
         while not self.stop_event.is_set():
 
             if not self.connected:
-                with self.thread_lock:
-                    self.target_ip, self.target_port, self.connected = self.connection_manager.connection_establishment()
+                self.response_on_connection_attempt()
 
-                    if self.connected  and self.target_ip != "" and self.target_port > 0:
-                        self.responding = False
-                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
-
-                    if not self.connected and self.target_ip != "" and self.target_port > 0:
-                        self.responding = True
-                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
-
-            while not self.responding and self.connected and not self.stop_event.is_set():
+            while self.connected and not self.stop_event.is_set():
                 try:
                     data = self.connection_manager.receive_data()
-                    # if data:
-                    #     if check_for_fin(data[0][0]):
-                    #
-                    #
-                    #     else:
-                    #         with self.thread_lock:
-                    #             print(f"\nReceived message: {data}")
-                    #
-                    #             header = data[0][0]
-                    #             flags = self.protocol_handler.parse_flags(header[3])
-                    #
-                    #             if not self.connected and self.responding:
-                    #                 print("Do you want to establish connection? (y/n): ", end='', flush=True)
-                    #             else:
-                    #                 print("Select operation:"
-                    #                               "\n- send message (m)"
-                    #                               "\n- send file (f)"
-                    #                               "\n- close connection (c)"
-                    #                               "\n- exit (e)"
-                    #                               "\n→ ", end='', flush=True)
+
                     if data:
                         with self.thread_lock:
-                                print(f"\nReceived message: {data}")
+                            self.clear_stdin()
+                            self.processing_data = True
+                            print(f"\nReceived message: {data}")
 
-                                header = data[0][0]
-                                flags = HeaderHelper.parse_flags(header[3])
+                            header = data[0][0]
+                            message_type = header[2]
+                            flags = HeaderHelper.parse_flags(header[3])
 
-                                if not self.connected and self.responding:
-                                    print("Do you want to establish connection? (y/n): ", end='', flush=True)
-                                else:
-                                    print("Select operation:"
-                                                  "\n- send message (m)"
-                                                  "\n- send file (f)"
-                                                  "\n- close connection (c)"
-                                                  "\n- exit (e)"
-                                                  "\n→ ", end='', flush=True)
+                            if message_type == cfg.MSG_TYPES["TEXT"] or message_type == cfg.MSG_TYPES["FILE"]:
+                                if flags["ACK"]:
+                                    self.connection_manager.finish_fragment_transmission(header[1])
+
+                                elif flags["NACK"]:
+                                    self.connection_manager.resend_fragment(header[1])
+
+                            self.processing_data = False
+                            print("Select operation:"
+                                          "\n- send message (m)"
+                                          "\n- send file (f)"
+                                          "\n- close connection (c)"
+                                          "\n- exit (e)"
+                                          "\n→ ", end='', flush=True)
+
                 except Exception as e:
                     if not self.is_active:
                         print("Disconnected...")
                     else:
                         print(f"An exception occurred: {e}")
-
-            if self.connected and self.responding:
-                self.connected = not self.connection_manager.connection_closing()
-                self.responding = self.connected
-
-    def initiate_connection(self, target_ip:str, target_port:int):
-        """
-        Start the connection establishment by 3-way handshake
-
-        :param target_ip:
-        :param target_port:
-        :return:
-        """
-        self.connection_manager.send_connection_request(target_ip, target_port)
-
-
-    def send_message(self):
-        """
-        Method which handles message sending and also the message input
-        :return:
-        """
-        self.clear_stdin()
-        message = str(input("Enter a message: "))
-        self.send_data(message.encode())
-
-    def send_data(self, data:bytes, msg_type:int=0, flags:dict={}, fragment_id:int=0):
-        """
-        Send data after connection establishment, managing also fragmentation.
-
-        :param data:
-        :param msg_type:
-        :param flags:
-        :param fragment_id:
-        :return:
-        """
-
-
-        fragments = self.protocol_handler.fragment_data(data)
-
-        for fragment in fragments:
-            header = self.protocol_handler.assemble_header(
-                fragment=data,
-                sequence_number=0,
-                msg_type=msg_type,
-                flags=flags,
-                fragment_id=fragment_id,
-                window_size=0
-            )
-            self.connection_manager.send_fragment(header, fragment, self.target_ip, self.target_port)
-
-    def receive_data(self):
-        """
-        Receives data from another peer and reassembles fragments
-        :return:
-        """
-        header_and_data, source_socket = self.connection_manager.receive_data()
-        data = self.protocol_handler.reassemble_data(header_and_data[1])
-
-        print(f"Data from: {source_socket}\n"
-              f"Content: {data}")
 
 
     def close_application(self):
@@ -249,11 +180,13 @@ class Node:
             print("Disconnected")
 
         self.is_active = False
-        self.responding = False
+        self.processing_data = False
+
 
     @classmethod
     def clear_stdin(cls):
         sys.stdin.flush()
+
 
 if __name__ == "__main__":
     ip = str(input("Enter IP: "))

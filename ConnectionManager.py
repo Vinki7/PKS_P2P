@@ -1,8 +1,10 @@
 import socket as sock
+import time
 
 import config as cfg
 from Command.SendControl import SendControl
 from Command.Send import Send
+from Command.SendText import SendText
 from Model.Fragment import Fragment
 from Model.Message import Message
 
@@ -11,7 +13,7 @@ from UtilityHelpers.HeaderHelper import HeaderHelper
 
 
 class ConnectionManager:
-    def __init__(self, sending_ip:str, sending_port:int, receiving_ip:str, receiving_port:int, window_size:int = 1024):
+    def __init__(self, sending_ip:str, sending_port:int, receiving_ip:str, receiving_port:int, window_size:int = 1200):
         self.sending_ip = sending_ip
         self.sending_port = sending_port
         self.sending_socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
@@ -24,6 +26,8 @@ class ConnectionManager:
         self.receiving_socket.bind((self.receiving_ip, self.receiving_port))
 
         self.queue = []
+        self.waiting_fragments: {int: Send} = {}
+        self.received_message_fragments = []
 
         self.act_seq = 0
 
@@ -32,13 +36,28 @@ class ConnectionManager:
         self.fragment_size = window_size - HeaderHelper.get_header_length_add_crc16()
 
 
-    def queue_up_message(self, message_to_send: Send, priority: bool = False):
+    def queue_up_message(self, message_to_send: Send, priority: bool = False) -> None:
         self.act_seq += 1
-        if priority:
-            self.queue.insert(0, message_to_send.send(self.fragment_size)[0])
-        else:
-            self.queue.extend(message_to_send.send(self.fragment_size))
+        message_fragments = message_to_send.send(self.fragment_size)
 
+        if priority:
+            self.queue.insert(0, message_fragments[0]) # only control message can have priority = 1 fragment
+        else:
+            self.queue.extend(message_fragments)
+
+        if not isinstance(message_to_send, SendControl):
+            i = 1
+            for fragment in message_fragments:
+                self.waiting_fragments[i] = fragment
+                i += 1
+        else:
+            self.waiting_fragments[0] = message_fragments[0]
+
+    def resend_fragment(self, fragment_id: int):
+        pass
+
+    def finish_fragment_transmission(self, fragment_id: int):
+        pass
 
     def queue_is_empty(self) -> bool:
         return len(self.queue) == 0
@@ -83,7 +102,6 @@ class ConnectionManager:
 
         header = HeaderHelper.parse_header(response[0])
 
-
         flags = HeaderHelper.parse_flags(header[3])
 
         if flags["CONN"] and not flags["ACK"]:
@@ -106,7 +124,8 @@ class ConnectionManager:
 
             return target_ip, target_port, True
 
-        return "", 0
+        return None, None
+
 
     def close_connection_request(self, target_ip:str, target_port:int):
         """
@@ -126,6 +145,7 @@ class ConnectionManager:
         )
 
         self.send_fin(header, fin_msg.encode(), target_ip, target_port)
+
 
     def connection_closing(self) -> bool:
         """
@@ -166,7 +186,6 @@ class ConnectionManager:
         return False
 
 
-
     def _send_ack(self, prev_flag:str):
         """
         Send an acknowledgment to the prev. message/request
@@ -198,6 +217,7 @@ class ConnectionManager:
             priority=True
         )
 
+
     def _receive_ack(self) -> dict:
         """
         Receive an ACK message.
@@ -210,6 +230,7 @@ class ConnectionManager:
         header = HeaderHelper.parse_header(split_data[0])
         return HeaderHelper.parse_flags(header[3])
 
+
     def send_fragment(self, target_ip: str, target_port: int):
         """
         Send a data fragment
@@ -219,8 +240,9 @@ class ConnectionManager:
         :return:
         """
         fragment: bytes = self.queue.pop(0)
-
         self.sending_socket.sendto(fragment, (target_ip, target_port))
+        time.sleep(0.1)
+
 
     def receive_data(self) -> tuple | None:
         """
@@ -229,9 +251,7 @@ class ConnectionManager:
         """
         try:
             data, source_socket_pair = self.receiving_socket.recvfrom(self.window_size)
-
             return FragmentHelper.strip_header(data), source_socket_pair
-
 
         except WindowsError as e:
             print(f"Socket closed")
@@ -241,10 +261,10 @@ class ConnectionManager:
 
         return None
 
+
     def send_fin(self, header:bytes, message:bytes, target_ip:str, target_port:int):
         """
         Send a connection termination request (flag - FIN)
         :return:
         """
         self.sending_socket.sendto(header + message, (target_ip, target_port))
-
