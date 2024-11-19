@@ -36,8 +36,20 @@ class ConnectionManager:
         self.fragment_size = window_size - HeaderHelper.get_header_length_add_crc16()
 
 
+    def send_fragment(self, target_ip: str, target_port: int):
+        """
+        Send a data fragment
+
+        :param target_ip: Destination IP address
+        :param target_port: Destination port
+        :return:
+        """
+        fragment: bytes = self.queue.pop(0)
+        self.sending_socket.sendto(fragment, (target_ip, target_port))
+        time.sleep(0.1)
+
+
     def queue_up_message(self, message_to_send: Send, priority: bool = False) -> None:
-        self.act_seq += 1
         message_fragments = message_to_send.send(self.fragment_size)
 
         if priority:
@@ -53,14 +65,24 @@ class ConnectionManager:
         else:
             self.waiting_fragments[0] = message_fragments[0]
 
+
     def resend_fragment(self, fragment_id: int):
         pass
+
+
+    def fragment_acknowledgement(self, ack:Send):
+        self.queue_up_message(ack, priority=True)
+
 
     def finish_fragment_transmission(self, fragment_id: int):
         pass
 
+
     def queue_is_empty(self) -> bool:
         return len(self.queue) == 0
+
+    def fragments_waiting(self) -> bool:
+        return len(self.waiting_fragments) == 0
 
     def initiate_connection(self, target_ip: str, target_port: int):
         desired_flags = dict()
@@ -93,16 +115,16 @@ class ConnectionManager:
 
         :return: tuple = ( target_ip , target_port , window_size )
         """
-        raw_data = self.receive_data()
-        response = raw_data[0]
-        peers_socket_pair = raw_data[1]
+        payload, socket = self.receive_data()
 
-        target_ip = peers_socket_pair[0]
-        target_port = peers_socket_pair[1] + 1
+        header = HeaderHelper.parse_header(payload[0])
 
-        header = HeaderHelper.parse_header(response[0])
+        target_ip = socket[0]
+        target_port = socket[1] + 1
 
         flags = HeaderHelper.parse_flags(header[3])
+
+        self.act_seq = header[0] + 1
 
         if flags["CONN"] and not flags["ACK"]:
             print("\nReceived CONN flag, sending CONN+ACK...")
@@ -140,7 +162,7 @@ class ConnectionManager:
 
         header = HeaderHelper.construct_header(
             seq_num=sequence_number,
-            msg_type=1,
+            msg_type=cfg.MSG_TYPES["CTRL"],
             flags=HeaderHelper.construct_flag_segment(desired_flags),
         )
 
@@ -201,12 +223,11 @@ class ConnectionManager:
             desired_flags[prev_flag] = True
 
         desired_flags[cfg.ACK_FLAG[0]] = True
-        sequence_number = 0
         ack_message += f"[{cfg.ACK_FLAG[0]}]"
 
         message = Message(
             seq=self.act_seq,
-            message_type=2,
+            message_type=cfg.MSG_TYPES["CTRL"],
             flags=desired_flags,
             fragment_size=self.fragment_size,
             data = ack_message.encode()
@@ -231,19 +252,6 @@ class ConnectionManager:
         return HeaderHelper.parse_flags(header[3])
 
 
-    def send_fragment(self, target_ip: str, target_port: int):
-        """
-        Send a data fragment
-
-        :param target_ip: Destination IP address
-        :param target_port: Destination port
-        :return:
-        """
-        fragment: bytes = self.queue.pop(0)
-        self.sending_socket.sendto(fragment, (target_ip, target_port))
-        time.sleep(0.1)
-
-
     def receive_data(self) -> tuple | None:
         """
         Listens on socket and waits for the incoming data. Output is list which consists of encoded header and data
@@ -251,7 +259,7 @@ class ConnectionManager:
         """
         try:
             data, source_socket_pair = self.receiving_socket.recvfrom(self.window_size)
-            return FragmentHelper.strip_header(data), source_socket_pair
+            return FragmentHelper.parse_fragment(data), source_socket_pair
 
         except WindowsError as e:
             print(f"Socket closed")

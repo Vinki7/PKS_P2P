@@ -1,0 +1,102 @@
+# Byte-compiled / optimized / compiled Python files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Cython debug symbols
+cython_debug/
+
+# Virtual environments
+env/
+venv/
+ENV/
+*.venv/
+*.env/
+Pipfile.lock
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually contains executable files and machine-specific configurations
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.log
+*.out
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# pyenv
+.python-version
+
+# VSCode settings
+.vscode/
+*.code-workspace
+
+# macOS system files
+.DS_Store
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+
+# IDEs and editors
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.tmp
+
+# Logs
+*.log
+
+# Secrets and configuration
+.env
+.env.*
+.secret
+*.key
+*.pem
+
+# Local or production debug files
+debug.log
+
+# MyPy static type checker
+.mypy_cache/
+dmypy.json
+dmypy.json.lock
+
+# C Extensions
+*.so
+
+# Docker files
+*.pid

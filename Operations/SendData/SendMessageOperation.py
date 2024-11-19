@@ -11,6 +11,8 @@ class SendMessageOperation(Operation):
     def execute(self):
         text = str(input("Enter a message: "))
 
+        self.connection_manager.act_seq += 1
+
         self.connection_manager.queue_up_message(
             SendText(
                 message=Message(

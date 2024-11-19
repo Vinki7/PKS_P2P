@@ -1,4 +1,5 @@
 from ConnectionManager import ConnectionManager
+from Operations.Operation import Operation
 from Operations.SendControl.CloseConnectionOperation import CloseConnectionOperation
 from Operations.SendControl.InitiateConnectionOperation import InitiateConnectionOperation
 from Operations.SendData.SendMessageOperation import SendMessageOperation
@@ -13,7 +14,7 @@ class OperationManager:
         self.target_ip = target_ip
         self.target_port = target_port
 
-    def get_operation(self, operation_code: str):
+    def get_operation(self, operation_code: str) -> Operation | None:
         if operation_code == "i":
             return InitiateConnectionOperation(self.connection_handler, self.target_ip, self.target_port)
         elif operation_code == "m":

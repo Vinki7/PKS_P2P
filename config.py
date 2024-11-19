@@ -13,6 +13,14 @@ CRC16_FUNC = crcmod.mkCrcFun(
     xorOut=0x0000
 )
 
+OPERATION_PROMPT = ("Select operation:"
+                    "\n- send message (m)"
+                    "\n- send file (f)"
+                    "\n- send corrupted fragment (t)"
+                    "\n- set fragment size (s)"
+                    "\n- close connection (c)"
+                    "\n- exit (e)"
+                    "\n→: ")
 
 KEEP_ALIVE = ("K-A", 1)
 CONNECTION_REQUEST = ("CONN", 2)

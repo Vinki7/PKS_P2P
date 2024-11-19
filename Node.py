@@ -6,6 +6,11 @@ from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
 from Operations.OperationManager import OperationManager
+from Operations.Receive.ReceiveControl import ReceiveControl
+from Operations.Receive.ReceiveFile import ReceiveFile
+from Operations.Receive.ReceiveMessage import ReceiveMessage
+from Operations.SendData.SendMessageOperation import SendMessageOperation
+from Operations.SendData.TestCorruptedFragmentOperation import TestCorruptedFragmentOperation
 from UtilityHelpers.HeaderHelper import HeaderHelper
 import config as cfg
 
@@ -35,7 +40,7 @@ class Node:
 
         self.is_active = True
         self.connected = False
-        self.processing_data = False
+        self.waiting_for_response = False
 
     def run(self):
         listening_thread = threading.Thread(target=self.listen_for_messages)
@@ -52,20 +57,17 @@ class Node:
                 if not self.connected:
                     self.connection_prompt()
 
-                while self.connected and not self.processing_data:
+                while self.connected and not self.waiting_for_response:
                     self.clear_stdin()
-                    operation_code = str(input("Select operation:"
-                                          "\n- send message (m)"
-                                          "\n- send file (f)"
-                                          "\n- set fragment size (s)"
-                                          "\n- close connection (c)"
-                                          "\n- exit (e)"
-                                          "\n→ "))
+                    operation_code = str(input(cfg.OPERATION_PROMPT))
 
                     self.clear_stdin()
                     operation = self.operation_manager.get_operation(operation_code.lower())
 
                     if operation:
+                        if isinstance(operation, SendMessageOperation)\
+                                or isinstance(operation, TestCorruptedFragmentOperation):  # or isinstance(operation, SendFileOperation):
+                            self.waiting_for_response = True
                         operation.execute()
                     else:
                         print(f"Wrong operation code, please, try again...")
@@ -89,6 +91,7 @@ class Node:
                     self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
 
                     self.operation_manager.get_operation("i").execute()
+                    time.sleep(1)
 
             elif connection_prompt.lower() == "n":
                 self.is_active = False
@@ -134,30 +137,35 @@ class Node:
                     data = self.connection_manager.receive_data()
 
                     if data:
+                        parsed_payload = data[0]
+                        parsed_header = HeaderHelper.parse_header(parsed_payload[0])
+
                         with self.thread_lock:
                             self.clear_stdin()
-                            self.processing_data = True
                             print(f"\nReceived message: {data}")
 
-                            header = data[0][0]
-                            message_type = header[2]
-                            flags = HeaderHelper.parse_flags(header[3])
+                            message_type = parsed_header[2]
 
-                            if message_type == cfg.MSG_TYPES["TEXT"] or message_type == cfg.MSG_TYPES["FILE"]:
-                                if flags["ACK"]:
-                                    self.connection_manager.finish_fragment_transmission(header[1])
+                            if message_type == cfg.MSG_TYPES["TEXT"]:
+                                ReceiveMessage(
+                                    data=parsed_payload,
+                                    connection_handler=self.connection_manager,
+                                    waiting_for_response=self.waiting_for_response
+                                ).execute()
+                            elif message_type == cfg.MSG_TYPES["FILE"]:
+                                ReceiveFile(
+                                    data=parsed_payload,
+                                    connection_handler=self.connection_manager,
+                                    waiting_for_response=self.waiting_for_response
+                                ).execute()
+                            else:
+                                ReceiveControl(
+                                    data=parsed_payload,
+                                    connection_handler=self.connection_manager,
+                                ).execute()
 
-                                elif flags["NACK"]:
-                                    self.connection_manager.resend_fragment(header[1])
-
-                            self.processing_data = False
-                            print("Select operation:"
-                                          "\n- send message (m)"
-                                          "\n- send file (f)"
-                                          "\n- set fragment size (s)"
-                                          "\n- close connection (c)"
-                                          "\n- exit (e)"
-                                          "\n→ ", end='', flush=True)
+                            self.waiting_for_response = False
+                            print(cfg.OPERATION_PROMPT, end='', flush=True)
 
                 except Exception as e:
                     if not self.is_active:
@@ -180,7 +188,7 @@ class Node:
             print("Disconnected")
 
         self.is_active = False
-        self.processing_data = False
+        self.waiting_for_response = False
 
 
     @classmethod
