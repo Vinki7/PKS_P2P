@@ -1,5 +1,7 @@
 import time
+from cgi import parse_header
 
+from Command.SendControl import SendControl
 from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
@@ -37,6 +39,15 @@ class ReceiveMessage(Operation):
             if not self.connection_handler.fragments_waiting():
                 break
 
+            parsed_header = HeaderHelper.parse_header(self.header)
+            flags = HeaderHelper.parse_flags(parsed_header[3])
+
+            if flags["ACK"]:
+                self.connection_handler.finish_fragment_transmission(parsed_header[1])
+            else:
+                self.connection_handler.retransmit_fragment(parsed_header[1])
+
+            (self.header, self.body, self.crc), _ = self.connection_handler.receive_data()
 
 
 
@@ -52,7 +63,7 @@ class ReceiveMessage(Operation):
 
                 if is_success:
                     self.complete_message += bytes.decode(self.body)
-                    self.connection_handler.fragment_acknowledgement(SendText(
+                    self.connection_handler.fragment_acknowledgement(SendControl(
                         self.construct_acknowledgement_message(ack=True, seq=parsed_header[0],frag_id=parsed_header[1],
                                                                frag_size=parsed_header[4])
                     ))
@@ -60,7 +71,7 @@ class ReceiveMessage(Operation):
                     break
 
                 else:
-                    self.connection_handler.fragment_acknowledgement(SendText(
+                    self.connection_handler.fragment_acknowledgement(SendControl(
                         self.construct_acknowledgement_message(ack=False, seq=parsed_header[0], frag_id=parsed_header[1],
                                                                frag_size=parsed_header[4])
                     ))
@@ -79,7 +90,8 @@ class ReceiveMessage(Operation):
                 frag_id=frag_id,
                 message_type=cfg.MSG_TYPES["CTRL"],
                 flags={
-                    "ACK": True if ack else False
+                    "ACK": True if ack else False,
+                    "NACK": False if ack else True
                 },
                 fragment_size=frag_size
             )

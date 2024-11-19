@@ -1,7 +1,3 @@
-import struct
-
-from pyexpat.errors import messages
-
 from Model.Message import Message
 import config as cfg
 from UtilityHelpers.HeaderHelper import HeaderHelper
@@ -22,6 +18,7 @@ class Fragment:
             self.message.seq, self.fragment_id,
             self.message.message_type, HeaderHelper.construct_flag_segment(self.message.flags), self.message.fragment_size
         )
+        # print(f"Flag value:{HeaderHelper.construct_flag_segment(self.message.flags)}")
 
         return header
 

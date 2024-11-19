@@ -162,6 +162,7 @@ class Node:
                                 ReceiveControl(
                                     data=parsed_payload,
                                     connection_handler=self.connection_manager,
+                                    waiting_for_response=self.waiting_for_response
                                 ).execute()
 
                             self.waiting_for_response = False

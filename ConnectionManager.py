@@ -4,8 +4,6 @@ import time
 import config as cfg
 from Command.SendControl import SendControl
 from Command.Send import Send
-from Command.SendText import SendText
-from Model.Fragment import Fragment
 from Model.Message import Message
 
 from UtilityHelpers.FragmentHelper import FragmentHelper
@@ -66,16 +64,17 @@ class ConnectionManager:
             self.waiting_fragments[0] = message_fragments[0]
 
 
-    def resend_fragment(self, fragment_id: int):
-        pass
+    def retransmit_fragment(self, fragment_id: int):
+        fragment = self.waiting_fragments[fragment_id]
+        self.queue.extend(fragment.send(self.fragment_size))
 
 
     def fragment_acknowledgement(self, ack:Send):
         self.queue_up_message(ack, priority=True)
 
 
-    def finish_fragment_transmission(self, fragment_id: int):
-        pass
+    def finish_fragment_transmission(self, fragment_id: int) -> Send:
+        return self.waiting_fragments.pop(fragment_id)
 
 
     def queue_is_empty(self) -> bool:
