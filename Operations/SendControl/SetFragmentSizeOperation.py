@@ -15,16 +15,7 @@ class SetFragmentSizeOperation(Operation):
 
         if new_f_size in range(cfg.MIN_FRAGMENT_SIZE, cfg.MAX_FRAGMENT_SIZE+1):
             self.connection_handler.fragment_size = new_f_size
+            print(f"New fragment size was set successfully - {new_f_size} b!")
 
-            self.connection_handler.queue_up_message(
-                SendControl(
-                    message=Message(
-                        seq=self.connection_handler.act_seq,
-                        message_type=cfg.MSG_TYPES["CTRL"],
-                        flags={
-                            cfg.SET_FRAGMENT[0]: True
-                        },
-                        fragment_size=new_f_size,
-                    )
-                )
-            )
+        else:
+            print("Invalid fragment size, no changes were made...")

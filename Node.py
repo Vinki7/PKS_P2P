@@ -25,11 +25,10 @@ class Node:
         self.receiving_port = r_port
 
         self.connection_manager = ConnectionManager(self.sending_ip, self.sending_port, self.receiving_ip, self.receiving_port)
+        self.operation_manager = None
 
         self.target_ip = None
         self.target_port = None
-
-        self.operation_manager = None
 
         self.thread_lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -155,6 +154,7 @@ class Node:
                             print("Select operation:"
                                           "\n- send message (m)"
                                           "\n- send file (f)"
+                                          "\n- set fragment size (s)"
                                           "\n- close connection (c)"
                                           "\n- exit (e)"
                                           "\n→ ", end='', flush=True)
