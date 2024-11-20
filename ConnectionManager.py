@@ -4,6 +4,7 @@ import time
 import config as cfg
 from Command.SendControl import SendControl
 from Command.Send import Send
+from Model.Fragment import Fragment
 from Model.Message import Message
 
 from UtilityHelpers.FragmentHelper import FragmentHelper
@@ -34,18 +35,26 @@ class ConnectionManager:
         self.fragment_size = window_size - HeaderHelper.get_header_length_add_crc16()
 
 
-    def send_fragment(self, target_ip: str, target_port: int):
-        """
-        Send a data fragment
+    def _add_waiting_fragment(self, fragment_id:int, fragment:Send):
+        self.waiting_fragments[fragment_id] = fragment
+        print(f"---------------------------------------------\n"
+              f"Adding fragment with id: {fragment_id}\n"
+              f"---------------------------------------------")
 
-        :param target_ip: Destination IP address
-        :param target_port: Destination port
-        :return:
-        """
-        fragment: bytes = self.queue.pop(0)
-        self.sending_socket.sendto(fragment, (target_ip, target_port))
-        time.sleep(0.1)
+    def _no_longer_waiting(self, fragment_id:int) -> Send:
+        print(f"---------------------------------------------\n"
+              f"Removing fragment with id: {fragment_id}\n"
+              f"---------------------------------------------")
+        return self.waiting_fragments.pop(fragment_id)
 
+    def _get_waiting_by_id(self, fragment_id:int) -> Fragment:
+        print(f"---------------------------------------------\n"
+              f"Getting fragment with id: {fragment_id}\n"
+              f"---------------------------------------------")
+        return self.waiting_fragments[fragment_id]
+
+    def are_fragments_waiting(self) -> bool:
+        return len(self.waiting_fragments) > 0
 
     def queue_up_message(self, message_to_send: Send, priority: bool = False) -> None:
         message_fragments = message_to_send.send(self.fragment_size)
@@ -56,17 +65,34 @@ class ConnectionManager:
             self.queue.extend(message_fragments)
 
         if not isinstance(message_to_send, SendControl):
-            i = 1
+            i = 0
             for fragment in message_fragments:
-                self.waiting_fragments[i] = fragment
+                self._add_waiting_fragment(i, fragment)
                 i += 1
-        else:
-            self.waiting_fragments[0] = message_fragments[0]
+
+    def queue_is_empty(self) -> bool:
+        return len(self.queue) == 0
+
+
+    def send_fragment(self, target_ip: str, target_port: int):
+        """
+        Send a data fragment
+
+        :param target_ip: Destination IP address
+        :param target_port: Destination port
+        :return:
+        """
+        fragment: Fragment = self.queue.pop(0)
+        self.sending_socket.sendto(fragment.construct_raw_fragment(), (target_ip, target_port))
+        time.sleep(0.1)
 
 
     def retransmit_fragment(self, fragment_id: int):
-        fragment = self.waiting_fragments[fragment_id]
-        self.queue.extend(fragment.send(self.fragment_size))
+        fragment = self._get_waiting_by_id(fragment_id)
+        self.queue.extend([fragment])
+        print(f"---------------------------------------------------\n"
+              f"Retransmitting fragment with id: {fragment.header[1]}, corresponding waiting id: {fragment_id}\n"
+              f"---------------------------------------------------")
 
 
     def fragment_acknowledgement(self, ack:Send):
@@ -74,14 +100,8 @@ class ConnectionManager:
 
 
     def finish_fragment_transmission(self, fragment_id: int) -> Send:
-        return self.waiting_fragments.pop(fragment_id)
+        return self._no_longer_waiting(fragment_id)
 
-
-    def queue_is_empty(self) -> bool:
-        return len(self.queue) == 0
-
-    def fragments_waiting(self) -> bool:
-        return len(self.waiting_fragments) == 0
 
     def initiate_connection(self, target_ip: str, target_port: int):
         desired_flags = dict()

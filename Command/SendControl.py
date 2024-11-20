@@ -13,5 +13,5 @@ class SendControl(Send):
                 message=self.message,
                 fragment_id=self.message.frag_id,
                 data=self.message.data
-            ).construct_raw_fragment()
+            )
         ]

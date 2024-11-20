@@ -7,42 +7,41 @@ class SendText(Send):
         self.corrupted = corrupted
         self.message = message
 
-    def send(self, fragment_size: int) -> list :
-        bytes_fragmented = 0
-
-        fragments = []
+    def send(self, fragment_size: int) -> list[Fragment] :
 
         if len(self.message.data) > fragment_size:
-            self.message.flags["FRAG"] = True
-
-            while len(self.message.data) >= bytes_fragmented:
-
-                if len(self.message.data) <= (bytes_fragmented + fragment_size): # last fragment
-                    self.message.flags["FIN"] = True
-
-                fragment = Fragment(message=self.message,
-                                    fragment_id=len(fragments),
-                                    data=self.message.data[bytes_fragmented:(bytes_fragmented + fragment_size)])
-
-
-                fragments.append(fragment.construct_raw_fragment())
-
-                bytes_fragmented += fragment_size
+            return self._fragment_data(fragment_size)
 
         else:
-            fragments.append(Fragment(message=self.message,
-                                      data=self.message.data
-                                      ).construct_raw_fragment()
-                             )
+            return [
+                Fragment(
+                    message=self.message,
+                    data=self.message.data,
+                    corrupted=self.corrupted
+                )
 
-        if self.corrupted:
-            corrupted_part = b"|C|"
-            fragment = fragments[0]
-            crc = fragment[-2:]
-            correct_part = fragment[:(len(fragment)-5)]
+            ]
 
-            fragments[0] = correct_part + corrupted_part + crc
-            print(f"{fragments[0]}")
-            self.corrupted = False
+
+
+    def _fragment_data(self, fragment_size) -> [Fragment]:
+        self.message.flags["FRAG"] = True
+        bytes_fragmented = 0
+        fragments = []
+
+        while len(self.message.data) >= bytes_fragmented:
+
+            if len(self.message.data) <= (bytes_fragmented + fragment_size):  # last fragment
+                self.message.flags["FIN"] = True
+
+            fragment = Fragment(message=self.message,
+                                fragment_id=len(fragments),
+                                data=self.message.data[bytes_fragmented:(bytes_fragmented + fragment_size)],
+                                corrupted=self.corrupted if bytes_fragmented == 0 else False
+                            )
+
+            fragments.append(fragment)
+
+            bytes_fragmented += fragment_size
 
         return fragments

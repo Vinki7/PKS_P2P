@@ -36,7 +36,7 @@ class ReceiveMessage(Operation):
 
     def _sender_logic(self):
         while True:
-            if not self.connection_handler.fragments_waiting():
+            if not self.connection_handler.are_fragments_waiting():
                 break
 
             parsed_header = HeaderHelper.parse_header(self.header)

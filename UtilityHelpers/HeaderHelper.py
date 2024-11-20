@@ -4,7 +4,7 @@ import config as cfg
 
 class HeaderHelper:
     @staticmethod
-    def extract_from_flag_def(flag_tuple: tuple[2], extract_name: bool = False) -> str:
+    def extract_from_flag_def(flag_tuple: tuple[str, int], extract_name: bool = False) -> str | int:
         if not extract_name:
             return flag_tuple[1]
         return flag_tuple[0]
@@ -27,9 +27,24 @@ class HeaderHelper:
 
         for flag_name, is_present in flags.items():
             if is_present:
-                flag_segment += cfg.FLAG_DEFINITIONS[flag_name]
+                flag_segment |= cfg.FLAG_DEFINITIONS[flag_name]  # Use bitwise OR
 
         return flag_segment
+
+    @staticmethod
+    def parse_flags(raw_flags: int) -> dict:
+        """
+        Parses an integer of raw flags into a dictionary of flag states.
+
+        :param raw_flags: An integer containing the encoded flags.
+        :return: A dictionary where keys are flag names, and values are booleans indicating whether the flag is set.
+        """
+        parsed_flags = {}
+
+        for flag_name, bitmask in cfg.FLAG_DEFINITIONS.items():
+            parsed_flags[flag_name] = bool(raw_flags & bitmask)  # Check if the bit is set
+
+        return parsed_flags
 
     @staticmethod
     def construct_header(seq_num: int = 0, frag_id: int = 0,
@@ -46,18 +61,3 @@ class HeaderHelper:
 
         return [sequence_number, fragment_id,
                 msg_type, flags, fragment_size]
-
-    @staticmethod
-    def parse_flags(raw_flags) -> dict:
-        """
-        Class method to parse flags from hex dump into separate units in list. The order is as follows:
-        [EMPTY_POSITION, FRAG, NACK, WSET, FIN, ACK, CONN, K-A] (1B)
-        :param raw_flags:
-        :return:
-        """
-        parsed_flags = {}
-
-        for flag_name, bitmask in cfg.FLAG_DEFINITIONS.items():
-            parsed_flags[flag_name] = bool(raw_flags & bitmask)
-
-        return parsed_flags

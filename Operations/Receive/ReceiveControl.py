@@ -1,4 +1,5 @@
 from ConnectionManager import ConnectionManager
+from Exceptions.ReceivigException import ReceivingException
 from Operations.Operation import Operation
 from UtilityHelpers.HeaderHelper import HeaderHelper
 
@@ -13,11 +14,13 @@ class ReceiveControl(Operation):
     def execute(self):
         if self.waiting_for_response:
             self._message_transmission_process()
+        else:
+            print("No response waiting; skipping transmission process.")
 
 
     def _message_transmission_process(self):
         while True:
-            if not self.connection_handler.fragments_waiting():
+            if not self.connection_handler.are_fragments_waiting():
                 break
 
             parsed_header = HeaderHelper.parse_header(self.header)
@@ -25,7 +28,13 @@ class ReceiveControl(Operation):
 
             if flags["ACK"]:
                 self.connection_handler.finish_fragment_transmission(parsed_header[1])
-            else:
+                break
+
+            if flags["NACK"]:
                 self.connection_handler.retransmit_fragment(parsed_header[1])
 
-            (self.header, self.body, self.crc), _ = self.connection_handler.receive_data()
+            try:
+                (self.header, self.body, self.crc), _ = self.connection_handler.receive_data()
+            except ReceivingException:
+                print("Failed to receive data, exiting loop.")
+                break
