@@ -11,17 +11,14 @@ class Fragment:
         self.crc16 = crc16
         self.corrupted = corrupted
 
-        self.header = self._construct_header()
+        self.header = self.construct_header()
+        self.fragment_size = len(data)+HeaderHelper.get_header_length_add_crc16(True)
 
-
-    def _construct_header(self)->bytes:
+    def construct_header(self)->bytes:
         header = HeaderHelper.construct_header(
             self.message.seq, self.fragment_id,
             self.message.message_type, HeaderHelper.construct_flag_segment(self.message.flags), self.message.fragment_size
         )
-        print(f"Flag value:{HeaderHelper.construct_flag_segment(self.message.flags)}\n"
-              f"Message type: {self.message.message_type}")
-
         return header
 
     def construct_raw_fragment(self) -> bytes:
@@ -33,12 +30,6 @@ class Fragment:
             correct_part = raw_data[:-len(corrupted_part)]
 
             raw_data = correct_part + corrupted_part
-            print(f"{raw_data[0]}")
             self.corrupted = False
 
         return raw_data + crc
-
-    def construct_corrupted_fragment(self, corruption:bytes = b""):
-        raw_data = self.header + self.data
-        corrupted_data = raw_data[:(len(raw_data)-len(corruption))] + corruption
-        return corrupted_data + cfg.CRC16_FUNC(raw_data).to_bytes(2, byteorder='big')

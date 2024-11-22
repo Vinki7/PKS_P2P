@@ -1,6 +1,7 @@
 from ConnectionManager import ConnectionManager
 from Exceptions.ReceivigException import ReceivingException
 from Operations.Operation import Operation
+from Operations.Receive.ReceiveData import ReceiveData
 from UtilityHelpers.HeaderHelper import HeaderHelper
 
 
@@ -15,6 +16,15 @@ class ReceiveControl(Operation):
         if self.waiting_for_response:
             self._message_transmission_process()
         else:
+            flags = HeaderHelper.parse_flags(self.header[3])
+            if flags["FRAG_COUNT"]:
+                frag_count = self.header[1]
+                receiver = ReceiveData(self.connection_handler, frag_count)
+                receiver.execute()
+                fragments = receiver.acked_fragments
+
+
+
             print("No response waiting; skipping transmission process.")
 
 

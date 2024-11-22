@@ -1,21 +1,21 @@
 import sys
 import threading
 import time
+from traceback import print_exc
 
 from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
 from Operations.OperationManager import OperationManager
 from Operations.Receive.ReceiveControl import ReceiveControl
-from Operations.Receive.ReceiveFile import ReceiveFile
-from Operations.Receive.ReceiveMessage import ReceiveMessage
+from Operations.Receive.HandleReceivedFile import ReceiveFile
+from Operations.Receive.HandleReceivedMessage import ReceiveMessage
+from Operations.ReceivingManager import ReceivingManager
 from Operations.SendData.SendMessageOperation import SendMessageOperation
 from Operations.SendData.TestCorruptedFragmentOperation import TestCorruptedFragmentOperation
 from UtilityHelpers.HeaderHelper import HeaderHelper
 import config as cfg
 
-
-# from Helpers import check_for_fin
 
 class Node:
     """
@@ -42,6 +42,8 @@ class Node:
         self.connected = False
         self.waiting_for_response = False
 
+        self.printed = False
+
     def run(self):
         listening_thread = threading.Thread(target=self.listen_for_messages)
         listening_thread.daemon = True
@@ -58,8 +60,15 @@ class Node:
                     self.connection_prompt()
 
                 while self.connected and not self.waiting_for_response:
+                    if not self.printed:
+                        print(cfg.OPERATION_PROMPT)
+                    else:
+                        self.printed = False
+
                     self.clear_stdin()
-                    operation_code = str(input(cfg.OPERATION_PROMPT))
+                    operation_code = str(input())
+
+                    self.printed = False
 
                     self.clear_stdin()
                     operation = self.operation_manager.get_operation(operation_code.lower())
@@ -137,36 +146,14 @@ class Node:
                     data = self.connection_manager.receive_data()
 
                     if data:
-                        parsed_payload = data[0]
-                        parsed_header = HeaderHelper.parse_header(parsed_payload[0])
-
                         with self.thread_lock:
-                            self.clear_stdin()
-                            print(f"\nReceived message: {data}")
-
-                            message_type = parsed_header[2]
-
-                            if message_type == cfg.MSG_TYPES["TEXT"]:
-                                ReceiveMessage(
-                                    data=parsed_payload,
-                                    connection_handler=self.connection_manager,
-                                    waiting_for_response=self.waiting_for_response
-                                ).execute()
-                            elif message_type == cfg.MSG_TYPES["FILE"]:
-                                ReceiveFile(
-                                    data=parsed_payload,
-                                    connection_handler=self.connection_manager,
-                                    waiting_for_response=self.waiting_for_response
-                                ).execute()
-                            else:
-                                ReceiveControl(
-                                    data=parsed_payload,
-                                    connection_handler=self.connection_manager,
-                                    waiting_for_response=self.waiting_for_response
-                                ).execute()
+                            ReceivingManager(data=data[0], connection_handler=self.connection_manager).operate(self.waiting_for_response)
 
                             self.waiting_for_response = False
-                            print(cfg.OPERATION_PROMPT, end='', flush=True)
+
+                            print(cfg.OPERATION_PROMPT)
+                            self.printed = True
+
 
                 except Exception as e:
                     if not self.is_active:
@@ -196,6 +183,9 @@ class Node:
     def clear_stdin(cls):
         sys.stdin.flush()
 
+    @classmethod
+    def clear_stdout(cls):
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     ip = str(input("Enter IP: "))

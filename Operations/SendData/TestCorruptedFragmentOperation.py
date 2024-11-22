@@ -1,7 +1,10 @@
+from Command.SendControl import SendControl
 from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
 from Operations.Operation import Operation
+import config as cfg
+import time
 
 
 class TestCorruptedFragmentOperation(Operation):
@@ -17,14 +20,33 @@ class TestCorruptedFragmentOperation(Operation):
 
         if to_send == "m":
             text = str(input("Enter a message: "))
+            self.connection_handler.act_seq += 2
+
+            text_message = SendText(
+                message=Message(
+                    seq=self.connection_handler.act_seq,
+                    fragment_size=self.connection_handler.fragment_size,
+                    data=text.encode()
+                ),
+                corrupted=True
+            )
+
+            send_frag_count = SendControl(
+                message=Message(
+                    seq=self.connection_handler.act_seq - 1,
+                    frag_id=text_message.fragment_count,
+                    message_type=cfg.MSG_TYPES["CTRL"],
+                    flags={
+                        "FRAG_COUNT": True
+                    }
+                )
+            )
 
             self.connection_handler.queue_up_message(
-                SendText(
-                    message=Message(
-                        seq=self.connection_handler.act_seq,
-                        fragment_size=self.connection_handler.fragment_size,
-                        data=text.encode()
-                    ),
-                    corrupted=True
-                )
+                send_frag_count,
+                priority=True
+            )
+            time.sleep(0.3)
+            self.connection_handler.queue_up_message(
+                text_message
             )

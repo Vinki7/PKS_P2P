@@ -1,3 +1,4 @@
+import socket
 import socket as sock
 import time
 
@@ -12,7 +13,7 @@ from UtilityHelpers.HeaderHelper import HeaderHelper
 
 
 class ConnectionManager:
-    def __init__(self, sending_ip:str, sending_port:int, receiving_ip:str, receiving_port:int, window_size:int = 1200):
+    def __init__(self, sending_ip:str, sending_port:int, receiving_ip:str, receiving_port:int):
         self.sending_ip = sending_ip
         self.sending_port = sending_port
         self.sending_socket = sock.socket(sock.AF_INET, sock.SOCK_DGRAM)
@@ -31,26 +32,26 @@ class ConnectionManager:
         self.act_seq = 0
 
 
-        self.window_size = window_size
-        self.fragment_size = window_size - HeaderHelper.get_header_length_add_crc16()
+        self.window_size = cfg.MAX_FRAGMENT_SIZE
+        self.fragment_size = cfg.MAX_FRAGMENT_SIZE #window_size - HeaderHelper.get_header_length_add_crc16()
 
 
     def _add_waiting_fragment(self, fragment_id:int, fragment:Send):
         self.waiting_fragments[fragment_id] = fragment
-        print(f"---------------------------------------------\n"
-              f"Adding fragment with id: {fragment_id}\n"
-              f"---------------------------------------------")
+        # print(f"---------------------------------------------\n"
+        #       f"Adding fragment with id: {fragment_id}\n"
+        #       f"---------------------------------------------")
 
     def _no_longer_waiting(self, fragment_id:int) -> Send:
-        print(f"---------------------------------------------\n"
-              f"Removing fragment with id: {fragment_id}\n"
-              f"---------------------------------------------")
+        # print(f"---------------------------------------------\n"
+        #       f"Removing fragment with id: {fragment_id}\n"
+        #       f"---------------------------------------------")
         return self.waiting_fragments.pop(fragment_id)
 
     def _get_waiting_by_id(self, fragment_id:int) -> Fragment:
-        print(f"---------------------------------------------\n"
-              f"Getting fragment with id: {fragment_id}\n"
-              f"---------------------------------------------")
+        # print(f"---------------------------------------------\n"
+        #       f"Getting fragment with id: {fragment_id}\n"
+        #       f"---------------------------------------------")
         return self.waiting_fragments[fragment_id]
 
     def are_fragments_waiting(self) -> bool:
@@ -90,9 +91,9 @@ class ConnectionManager:
     def retransmit_fragment(self, fragment_id: int):
         fragment = self._get_waiting_by_id(fragment_id)
         self.queue.extend([fragment])
-        print(f"---------------------------------------------------\n"
-              f"Retransmitting fragment with id: {fragment.header[1]}, corresponding waiting id: {fragment_id}\n"
-              f"---------------------------------------------------")
+        # print(f"---------------------------------------------------\n"
+        #       f"Retransmitting fragment with id: {fragment.header[1]}, corresponding waiting id: {fragment_id}\n"
+        #       f"---------------------------------------------------")
 
 
     def fragment_acknowledgement(self, ack:Send):
@@ -271,21 +272,27 @@ class ConnectionManager:
         return HeaderHelper.parse_flags(header[3])
 
 
-    def receive_data(self) -> tuple | None:
+    def receive_data(self, timeout = None) -> tuple | None:
         """
         Listens on socket and waits for the incoming data. Output is list which consists of encoded header and data
         :return: ([header, data], source_socket_pair)
         """
+        self.receiving_socket.settimeout(timeout)
         try:
             data, source_socket_pair = self.receiving_socket.recvfrom(self.window_size)
+            self.receiving_socket.settimeout(None)
             return FragmentHelper.parse_fragment(data), source_socket_pair
 
-        except WindowsError as e:
+        except socket.timeout:
+            return None
+
+        except WindowsError:
             print(f"Socket closed")
 
         except Exception as e:
             print(f"Error receiving data: {e}")
 
+        self.sending_socket.settimeout(None)
         return None
 
 
