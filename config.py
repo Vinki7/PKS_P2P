@@ -26,7 +26,7 @@ KEEP_ALIVE = ("K-A", 1)
 CONNECTION_REQUEST = ("CONN", 2)
 ACK_FLAG = ("ACK", 4)
 FIN = ("FIN", 8)
-SET_FRAGMENT = ("FSET", 16)
+SET_FILE_NAME = ("NAME", 16)
 NACK = ("NACK", 32)
 FRAGMENTED = ("FRAG", 64)
 
@@ -34,7 +34,7 @@ FLAG_DEFINITIONS = {
     "DATA": 128,
     "FRAG": 64,
     "NACK": 32,
-    "FSET": 16,
+    "NAME": 16,
     "FIN": 8,
     "ACK": 4,
     "CONN": 2,

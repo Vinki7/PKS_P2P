@@ -9,19 +9,18 @@ class SendText(Send):
     def __init__(self, message:Message, corrupted:bool = False):
         self.corrupted = corrupted
         self.message = message
-        self.fragment_count = self._count_fragment_count()
+        self.fragment_count = self._count_fragments()
 
     def send(self, fragment_size: int) -> list[Fragment] :
         data_size = fragment_size - HeaderHelper.get_header_length_add_crc16(True)
 
         message = f"Text size: {len(self.message.data)} B\n"
 
-        fragments = []
+        fragments:list[Fragment] = []
 
         if len(self.message.data) > data_size:
             message += f"Fragment size: {fragment_size} B\n"
             fragments = self._fragment_data(data_size)
-
         else:
             fragments.append(
                 Fragment(
@@ -50,11 +49,12 @@ class SendText(Send):
 
         while len(self.message.data) >= bytes_fragmented:
 
-            fragment = Fragment(message=self.message,
-                                fragment_id=len(fragments),
-                                data=self.message.data[bytes_fragmented:(bytes_fragmented + fragment_size)],
-                                corrupted=self.corrupted if bytes_fragmented == 0 else False
-                            )
+            fragment = Fragment(
+                message=self.message,
+                fragment_id=len(fragments),
+                data=self.message.data[bytes_fragmented:(bytes_fragmented + fragment_size)],
+                corrupted=self.corrupted if bytes_fragmented == 0 else False
+            )
 
             fragments.append(fragment)
 
@@ -62,5 +62,5 @@ class SendText(Send):
 
         return fragments
 
-    def _count_fragment_count(self):
+    def _count_fragments(self):
         return math.ceil(len(self.message.data) / (self.message.fragment_size - HeaderHelper.get_header_length_add_crc16(True)))

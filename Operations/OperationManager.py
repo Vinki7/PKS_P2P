@@ -2,6 +2,7 @@ from ConnectionManager import ConnectionManager
 from Operations.Operation import Operation
 from Operations.SendControl.CloseConnectionOperation import CloseConnectionOperation
 from Operations.SendControl.InitiateConnectionOperation import InitiateConnectionOperation
+from Operations.SendData.SendFileOperation import SendFileOperation
 from Operations.SendData.SendMessageOperation import SendMessageOperation
 from Operations.SendControl.SetFragmentSizeOperation import SetFragmentSizeOperation
 from Operations.SendData.TestCorruptedFragmentOperation import TestCorruptedFragmentOperation
@@ -20,8 +21,8 @@ class OperationManager:
             return InitiateConnectionOperation(self.connection_handler, self.target_ip, self.target_port)
         elif operation_code == "m":
             return SendMessageOperation(self.connection_handler)
-        # elif operation_code == "f":
-        #     return SendFileOperation(self.connection_handler)
+        elif operation_code == "f":
+            return SendFileOperation(self.connection_handler)
         elif operation_code == "t":
             return TestCorruptedFragmentOperation(self.connection_handler)
         elif operation_code == "s":

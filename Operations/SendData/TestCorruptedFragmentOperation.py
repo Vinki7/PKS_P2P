@@ -1,4 +1,5 @@
 from Command.SendControl import SendControl
+from Command.SendFile import SendFile
 from Command.SendText import SendText
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
@@ -16,7 +17,7 @@ class TestCorruptedFragmentOperation(Operation):
                                 "\n- send corrupted message (m)"
                                 "\n- send corrupted file (f)"
                                 "\n→ ")
-        )
+        ).lower()
 
         if to_send == "m":
             text = str(input("Enter a message: "))
@@ -50,3 +51,6 @@ class TestCorruptedFragmentOperation(Operation):
             self.connection_handler.queue_up_message(
                 text_message
             )
+
+        elif to_send == "f":
+            file = SendFile()

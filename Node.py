@@ -7,8 +7,7 @@ from ConnectionManager import ConnectionManager
 from Model.Message import Message
 from Operations.OperationManager import OperationManager
 from UtilityHelpers.HeaderHelper import HeaderHelper
-from Operations.SendData.SendMessageOperation import SendMessageOperation
-from Operations.SendData.TestCorruptedFragmentOperation import TestCorruptedFragmentOperation
+from UtilityHelpers.SocketHelper import *
 import config as cfg
 
 
@@ -37,10 +36,6 @@ class Node:
         self.connected = False
 
     def run(self):
-        # listening_thread = threading.Thread(target=self.listen_for_data)
-        # listening_thread.daemon = True
-        # listening_thread.start()
-
         sending_thread = threading.Thread(target=self.messaging_manager)
         sending_thread.daemon = True
         sending_thread.start()
@@ -56,13 +51,19 @@ class Node:
         try:
             while not self.stop_event.is_set() and self.is_active:
 
+
                 while self.connected and not self.connection_manager.processing:
+
+                    # Check if another thread needs input
+                    if self.connection_manager.input_in_progress:
+                        time.sleep(0.1)  # Yield and let the other thread use input
+                        continue
+
                     print(cfg.OPERATION_PROMPT)
                     self.clear_stdin()
                     operation_code = str(input())
 
-                    if self.connected:
-                        self.clear_stdin()
+                    if self.connected and not self.connection_manager.processing and not self.connection_manager.input_in_progress:
                         operation = self.operation_manager.get_operation(operation_code.lower())
 
                         if operation == "\n" or operation == '':
@@ -76,6 +77,7 @@ class Node:
         except KeyboardInterrupt:
             self.close_application()
 
+# --------------------- region Managers ---------------------
     def messaging_manager(self):
         while self.is_active and not self.stop_event.is_set():
             if self.target_ip is None or self.target_port is None:
@@ -85,13 +87,14 @@ class Node:
 
 
     def receiving_manager(self):
-        timeout_count = 0
         while True:
-            if not self.is_active:
+            if not self.is_active or self.stop_event.is_set():
                 break
 
             self.response_on_connection_attempt()
             time.sleep(1)
+
+            timeout_count = 0
 
             while True:
                 if not self.connected or timeout_count >= 3 or self.stop_event.is_set():
@@ -108,17 +111,16 @@ class Node:
                         timeout_count += 1
                         print(f"Keep-Alive messages missed: {timeout_count}")
                         continue
+
+                    self.connection_manager.processing = True
                     data = data[0]
-                    # print(f"{data}")
 
                     header = HeaderHelper.parse_header(data[0])
                     flags = HeaderHelper.parse_flags(header[3])
-                    body = data[1]
-                    crc = data[2]
 
                     if flags["DATA"] and header[2] == cfg.MSG_TYPES["CTRL"] and not (
                             flags["ACK"] or flags["NACK"]):
-                        self.connection_manager.processing = True
+                        self.clear_stdin()
                         self.connection_manager.process_data(header)
                         print(f"{cfg.OPERATION_PROMPT}")
 
@@ -127,6 +129,7 @@ class Node:
 
                     elif flags["K-A"]:
                         timeout_count = 0
+                        self.connection_manager.processing = False
 
                     elif flags["FIN"]:
                         pass
@@ -162,8 +165,10 @@ class Node:
                     time.sleep(4.8)
         except Exception:
             print(f"Keep-alive messages interrupted")
+# --------------------- end region ---------------------
 
 
+# --------------------- region Connection establishment ---------------------
     def sender_connection_establishment(self):
         try:
             connection_prompt = str(input("Do you want to establish connection? (y/n):"))
@@ -188,7 +193,7 @@ class Node:
                 pass # to escape the input
             else:
                 print(f"Wrong choice, try again...")
-        except ValueError as e:
+        except ValueError:
             print("Processing...\nPress Enter")
         except KeyboardInterrupt:
             self.close_application()
@@ -204,8 +209,10 @@ class Node:
             if self.connected:
                 self.connection_manager.processing = False
                 self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+# --------------------- end region ---------------------
 
 
+# --------------------- region Closing ---------------------
     def close_application(self):
         """
         Close the connection with another peer - usage of FIN flag in message
@@ -220,6 +227,7 @@ class Node:
             print("Disconnected")
 
         self.is_active = False
+# --------------------- end region ---------------------
 
     @classmethod
     def clear_stdin(cls):
@@ -230,11 +238,20 @@ class Node:
         sys.stdout.flush()
 
 if __name__ == "__main__":
-    ip = str(input("Enter IP: "))
-    receiving_port = int(input("Enter port for receiving: "))
+    while True:
+        ip = str(input("Enter IP: "))
+        receiving_port = int(input("Enter port for receiving: "))
 
-    sending_port = receiving_port - 1
+        if SocketHelper.is_valid_ip(ip) and SocketHelper.is_valid_port(receiving_port):
+            sending_port = receiving_port - 1
 
-    client_interface = Node(ip, sending_port, ip, receiving_port)
+            client_interface = Node(ip, sending_port, ip, receiving_port)
+            client_interface.run()
 
-    client_interface.run()
+            break
+        else:
+            print(f"Invalid IP or port. To try again, enter y (yes):")
+            user_input = str(input()).lower()
+            if not user_input == "y":
+                break
+

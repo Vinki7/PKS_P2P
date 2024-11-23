@@ -4,12 +4,14 @@ from UtilityHelpers.HeaderHelper import HeaderHelper
 
 
 class Fragment:
-    def __init__(self, message:Message, fragment_id:int = 0, data:bytes = b"", crc16:bytes = b"", corrupted:bool = False):
+    def __init__(self, message:Message, fragment_id:int = 0, data:bytes = b"", crc16:bytes = b"", file_name_flag:bool = False, corrupted:bool = False):
         self.message = message
         self.fragment_id = fragment_id
         self.data = data
         self.crc16 = crc16
         self.corrupted = corrupted
+
+        self.flags: dict = {**message.flags, **{"NAME":file_name_flag}}
 
         self.header = self.construct_header()
         self.fragment_size = len(data)+HeaderHelper.get_header_length_add_crc16(True)
@@ -17,7 +19,7 @@ class Fragment:
     def construct_header(self)->bytes:
         header = HeaderHelper.construct_header(
             self.message.seq, self.fragment_id,
-            self.message.message_type, HeaderHelper.construct_flag_segment(self.message.flags), self.message.fragment_size
+            self.message.message_type, HeaderHelper.construct_flag_segment(self.flags), self.message.fragment_size
         )
         return header
 
