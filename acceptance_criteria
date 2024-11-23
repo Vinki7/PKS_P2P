@@ -18,7 +18,7 @@
 |          |                |   celkovej veľkosti (posledný fragment môže mať odlišnú veľkosť ako predchádzajúce fragmenty).
 +----------+----------------+
 |          |                |   Simulovať chybu prenosu odoslaním minimálne 1 chybného fragmentu
-|   6      |	   no       |   pri prenose textu a súboru (do dátovej časti fragmentu alebo do checksum je cielene vnesená chyba,
+|   6      |	   yes      |   pri prenose textu a súboru (do dátovej časti fragmentu alebo do checksum je cielene vnesená chyba,
 |          |                |   to znamená, že prijímajúca strana deteguje chybu pri prenose).
 +----------+----------------+
 |          |                |   Prijímajúca strana musí byť schopná oznámiť odosielateľovi správne aj

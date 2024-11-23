@@ -5,7 +5,6 @@ from Model.Fragment import Fragment
 from Model.Message import Message
 from UtilityHelpers.HeaderHelper import HeaderHelper
 
-
 class SendText(Send):
     def __init__(self, message:Message, corrupted:bool = False):
         self.corrupted = corrupted
@@ -14,7 +13,6 @@ class SendText(Send):
 
     def send(self, fragment_size: int) -> list[Fragment] :
         data_size = fragment_size - HeaderHelper.get_header_length_add_crc16(True)
-
 
         message = f"Text size: {len(self.message.data)} B\n"
 
@@ -65,4 +63,4 @@ class SendText(Send):
         return fragments
 
     def _count_fragment_count(self):
-        return math.ceil(len(self.message.data) / self.message.fragment_size)
+        return math.ceil(len(self.message.data) / (self.message.fragment_size - HeaderHelper.get_header_length_add_crc16(True)))

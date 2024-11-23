@@ -7,7 +7,7 @@ from Command.SendControl import SendControl
 from Command.Send import Send
 from Model.Fragment import Fragment
 from Model.Message import Message
-
+from Operations.Receive.HandleReceivedMessage import HandleReceivedMessage
 from UtilityHelpers.FragmentHelper import FragmentHelper
 from UtilityHelpers.HeaderHelper import HeaderHelper
 
@@ -35,27 +35,24 @@ class ConnectionManager:
         self.window_size = cfg.MAX_FRAGMENT_SIZE
         self.fragment_size = cfg.MAX_FRAGMENT_SIZE #window_size - HeaderHelper.get_header_length_add_crc16()
 
+        self.processing = False
+
 
     def _add_waiting_fragment(self, fragment_id:int, fragment:Send):
         self.waiting_fragments[fragment_id] = fragment
-        # print(f"---------------------------------------------\n"
-        #       f"Adding fragment with id: {fragment_id}\n"
-        #       f"---------------------------------------------")
 
     def _no_longer_waiting(self, fragment_id:int) -> Send:
-        # print(f"---------------------------------------------\n"
-        #       f"Removing fragment with id: {fragment_id}\n"
-        #       f"---------------------------------------------")
         return self.waiting_fragments.pop(fragment_id)
 
     def _get_waiting_by_id(self, fragment_id:int) -> Fragment:
-        # print(f"---------------------------------------------\n"
-        #       f"Getting fragment with id: {fragment_id}\n"
-        #       f"---------------------------------------------")
         return self.waiting_fragments[fragment_id]
 
     def are_fragments_waiting(self) -> bool:
         return len(self.waiting_fragments) > 0
+
+    def queue_up_k_a(self, k_a_to_send: SendControl):
+        if not self.processing:
+            self.queue.extend(k_a_to_send.send(self.fragment_size))
 
     def queue_up_message(self, message_to_send: Send, priority: bool = False) -> None:
         message_fragments = message_to_send.send(self.fragment_size)
@@ -84,16 +81,151 @@ class ConnectionManager:
         :return:
         """
         fragment: Fragment = self.queue.pop(0)
-        self.sending_socket.sendto(fragment.construct_raw_fragment(), (target_ip, target_port))
+        raw = fragment.construct_raw_fragment()
+        self.sending_socket.sendto(raw, (target_ip, target_port))
+        # print(f"Sent: {raw}")
         time.sleep(0.1)
+
+    def handle_data_transmission(self, header, flags):
+        self.processing = True
+        timeout_count = 0
+
+        while len(self.waiting_fragments) > 0 and timeout_count <= cfg.TIMEOUT_TIME_EDGE:
+            print("Handling data transmission...")
+            if flags["ACK"]:
+                self.finish_fragment_transmission(header[1])
+            else:
+                self.retransmit_fragment(header[1])
+
+            data = self.listen_on_port(cfg.TIMEOUT_TIME_EDGE / 2)
+
+            if not data:
+                timeout_count += 1
+                continue
+
+            data = data[0]
+
+            header = HeaderHelper.parse_header(data[0])
+            flags = HeaderHelper.parse_flags(header[3])
+
+        if timeout_count > cfg.TIMEOUT_TIME_EDGE:
+            print("Data was not delivered. Please, try again")
+        else:
+            print("Data delivered successfully.")
+        self.processing = False
+
+
+    def process_data(self, header):
+        frag_count = header[1]
+
+        time_started = time.time()
+        fragments = self.receive_data(frag_count)
+        time_ended = time.time()
+        self.processing = False
+
+        if fragments[0].message.message_type == cfg.MSG_TYPES["TEXT"]:
+            HandleReceivedMessage(fragments=fragments,
+                                  time_started=time_started,
+                                  time_ended=time_ended).execute()
+        else:
+            pass
+
+    def receive_data(self, total_fragments) -> list[Fragment]:
+        acked_fragments: list[Fragment] = []
+        received_fragments: list[Fragment] = []
+        timeout_count = 0
+
+        print("Starting fragment reception...")
+        while len(acked_fragments) < total_fragments and timeout_count <= cfg.TIMEOUT_TIME_EDGE:
+            try:
+                # Receive data from the connection handler
+                data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 2)
+                if not data:
+                    if len(received_fragments) == 0:
+                        timeout_count += 1
+
+                    else:
+                        timeout_count = 0
+                        for fragment in received_fragments:
+                            parsed_header = HeaderHelper.parse_header(fragment.header)
+                            if not fragment.corrupted:
+                                acked_fragments.append(fragment)
+
+                                print(f"SEQ: {parsed_header[0]} | FRAG_ID: {parsed_header[1]} | Received successfully!")
+
+                                self.fragment_acknowledgement(SendControl(
+                                    self.construct_acknowledgement_message(ack=True, seq=parsed_header[0],
+                                                                           frag_id=parsed_header[1],
+                                                                           frag_size=parsed_header[4])
+                                ))
+                            else:
+                                print(f"SEQ: {parsed_header[0]} | FRAG_ID: {parsed_header[1]} | Received unsuccessfully!")
+
+                                self.fragment_acknowledgement(SendControl(
+                                    self.construct_acknowledgement_message(ack=False, seq=parsed_header[0],
+                                                                           frag_id=parsed_header[1],
+                                                                           frag_size=parsed_header[4])
+                                ))
+
+                        received_fragments.clear()
+                    continue
+
+                data = data[0]
+                print(f"{data}")  # delete me ------------------------------------------------------
+
+                fragment = self._process_fragment(data)
+
+                received_fragments.append(fragment)
+
+
+            except Exception as e:
+                print(f"Error during reception: {e}")
+                break
+        print(f"Reception finished: {len(acked_fragments)} fragments received")
+        return acked_fragments
+
+    @classmethod
+    def _process_fragment(cls, data: tuple) -> Fragment:
+        header, body, crc = data
+
+        valid = FragmentHelper.validate_crc(data)
+
+        parsed_header = HeaderHelper.parse_header(header)
+
+        return Fragment(
+            message=Message(
+                seq=parsed_header[0],
+                frag_id=parsed_header[1],
+                message_type=parsed_header[2],
+                flags=HeaderHelper.parse_flags(parsed_header[3]),
+                fragment_size=parsed_header[4]
+            ),
+            fragment_id=parsed_header[1],
+            data=body,
+            crc16=crc,
+            corrupted=not valid
+        )
+
+    @classmethod
+    def construct_acknowledgement_message(cls, ack: bool, seq: int, frag_id: int, frag_size: int):
+        message = Message(
+            seq=seq,
+            frag_id=frag_id,
+            message_type=cfg.MSG_TYPES["CTRL"],
+            flags={
+                "DATA": True,
+                "ACK": True if ack else False,
+                "NACK": False if ack else True
+            },
+            fragment_size=frag_size
+        )
+
+        return message
 
 
     def retransmit_fragment(self, fragment_id: int):
         fragment = self._get_waiting_by_id(fragment_id)
         self.queue.extend([fragment])
-        # print(f"---------------------------------------------------\n"
-        #       f"Retransmitting fragment with id: {fragment.header[1]}, corresponding waiting id: {fragment_id}\n"
-        #       f"---------------------------------------------------")
 
 
     def fragment_acknowledgement(self, ack:Send):
@@ -123,7 +255,7 @@ class ConnectionManager:
         print(f"Connection request sent to {target_ip}:{target_port}")
 
 
-    def connection_establishment(self) -> tuple:
+    def receiver_connection_establishment(self) -> tuple | None:
         """
         Handles logic of the phase, when none connection exists.
         The client receives [ACK], [CONN][ACK] or [ACK] messages.
@@ -135,7 +267,7 @@ class ConnectionManager:
 
         :return: tuple = ( target_ip , target_port , window_size )
         """
-        payload, socket = self.receive_data()
+        payload, socket = self.listen_on_port()
 
         header = HeaderHelper.parse_header(payload[0])
 
@@ -166,7 +298,7 @@ class ConnectionManager:
 
             return target_ip, target_port, True
 
-        return None, None
+        return None
 
 
     def close_connection_request(self, target_ip:str, target_port:int):
@@ -196,7 +328,7 @@ class ConnectionManager:
 
         :return: tuple = ( target_ip , target_port )
         """
-        raw_data = self.receive_data()
+        raw_data = self.listen_on_port()
         response = raw_data[0]
         peers_socket_pair = raw_data[1]
 
@@ -265,14 +397,14 @@ class ConnectionManager:
         :return:
         """
 
-        raw_data = self.receive_data()
+        raw_data = self.listen_on_port()
         split_data = raw_data[0]
 
         header = HeaderHelper.parse_header(split_data[0])
         return HeaderHelper.parse_flags(header[3])
 
 
-    def receive_data(self, timeout = None) -> tuple | None:
+    def listen_on_port(self, timeout = None) -> tuple | None:
         """
         Listens on socket and waits for the incoming data. Output is list which consists of encoded header and data
         :return: ([header, data], source_socket_pair)

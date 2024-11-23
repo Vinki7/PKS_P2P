@@ -37,7 +37,7 @@ class TestCorruptedFragmentOperation(Operation):
                     frag_id=text_message.fragment_count,
                     message_type=cfg.MSG_TYPES["CTRL"],
                     flags={
-                        "FRAG_COUNT": True
+                        "DATA": True
                     }
                 )
             )

@@ -14,7 +14,8 @@ class OperationManager:
         self.target_ip = target_ip
         self.target_port = target_port
 
-    def get_operation(self, operation_code: str) -> Operation | None:
+    def get_operation(self, operation_code: str) -> Operation | None | str:
+        operation_code = operation_code.lower()
         if operation_code == "i":
             return InitiateConnectionOperation(self.connection_handler, self.target_ip, self.target_port)
         elif operation_code == "m":
@@ -29,5 +30,7 @@ class OperationManager:
             return CloseConnectionOperation(self.connection_handler, self.target_ip, self.target_port)
         # elif operation_code == "e":
         #     return ExitOperation(self.application)
+        elif operation_code == "\n" or operation_code == '':
+            return  operation_code
         else:
             return None

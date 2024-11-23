@@ -31,7 +31,7 @@ NACK = ("NACK", 32)
 FRAGMENTED = ("FRAG", 64)
 
 FLAG_DEFINITIONS = {
-    "FRAG_COUNT": 128,
+    "DATA": 128,
     "FRAG": 64,
     "NACK": 32,
     "FSET": 16,

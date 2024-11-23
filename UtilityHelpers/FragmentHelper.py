@@ -24,7 +24,8 @@ class FragmentHelper:
         header, raw_data, raw_crc = payload
         received_crc = int.from_bytes(raw_crc, byteorder='big')
 
-        computed_crc = cfg.CRC16_FUNC(header+raw_data)
+        raw_data = header+raw_data
+        computed_crc = cfg.CRC16_FUNC(raw_data)
 
         return computed_crc == received_crc
 

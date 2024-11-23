@@ -17,7 +17,7 @@ class ReceiveControl(Operation):
             self._message_transmission_process()
         else:
             flags = HeaderHelper.parse_flags(self.header[3])
-            if flags["FRAG_COUNT"]:
+            if flags["DATA"]:
                 frag_count = self.header[1]
                 receiver = ReceiveData(self.connection_handler, frag_count)
                 receiver.execute()
@@ -44,7 +44,7 @@ class ReceiveControl(Operation):
                 self.connection_handler.retransmit_fragment(parsed_header[1])
 
             try:
-                (self.header, self.body, self.crc), _ = self.connection_handler.receive_data()
+                (self.header, self.body, self.crc), _ = self.connection_handler.listen_on_port()
             except ReceivingException:
                 print("Failed to receive data, exiting loop.")
                 break

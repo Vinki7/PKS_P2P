@@ -1,19 +1,14 @@
 import sys
 import threading
 import time
-from traceback import print_exc
 
-from Command.SendText import SendText
+from Command.SendControl import SendControl
 from ConnectionManager import ConnectionManager
 from Model.Message import Message
 from Operations.OperationManager import OperationManager
-from Operations.Receive.ReceiveControl import ReceiveControl
-from Operations.Receive.HandleReceivedFile import ReceiveFile
-from Operations.Receive.HandleReceivedMessage import ReceiveMessage
-from Operations.ReceivingManager import ReceivingManager
+from UtilityHelpers.HeaderHelper import HeaderHelper
 from Operations.SendData.SendMessageOperation import SendMessageOperation
 from Operations.SendData.TestCorruptedFragmentOperation import TestCorruptedFragmentOperation
-from UtilityHelpers.HeaderHelper import HeaderHelper
 import config as cfg
 
 
@@ -40,52 +35,136 @@ class Node:
 
         self.is_active = True
         self.connected = False
-        self.waiting_for_response = False
-
-        self.printed = False
 
     def run(self):
-        listening_thread = threading.Thread(target=self.listen_for_messages)
-        listening_thread.daemon = True
-        listening_thread.start()
+        # listening_thread = threading.Thread(target=self.listen_for_data)
+        # listening_thread.daemon = True
+        # listening_thread.start()
 
         sending_thread = threading.Thread(target=self.messaging_manager)
         sending_thread.daemon = True
         sending_thread.start()
 
+        receiving_thread = threading.Thread(target=self.receiving_manager)
+        receiving_thread.daemon = True
+        receiving_thread.start()
+
+        k_a_thread = threading.Thread(target=self.keep_alive_manager)
+        k_a_thread.daemon = True
+        k_a_thread.start()
+
         try:
-            while self.is_active:
-                time.sleep(0.5) # wait for possible connection request
-                if not self.connected:
-                    self.connection_prompt()
+            while not self.stop_event.is_set() and self.is_active:
 
-                while self.connected and not self.waiting_for_response:
-                    if not self.printed:
-                        print(cfg.OPERATION_PROMPT)
-                    else:
-                        self.printed = False
-
+                while self.connected and not self.connection_manager.processing:
+                    print(cfg.OPERATION_PROMPT)
                     self.clear_stdin()
                     operation_code = str(input())
 
-                    self.printed = False
+                    if self.connected:
+                        self.clear_stdin()
+                        operation = self.operation_manager.get_operation(operation_code.lower())
 
-                    self.clear_stdin()
-                    operation = self.operation_manager.get_operation(operation_code.lower())
-
-                    if operation:
-                        if isinstance(operation, SendMessageOperation)\
-                                or isinstance(operation, TestCorruptedFragmentOperation):  # or isinstance(operation, SendFileOperation):
-                            self.waiting_for_response = True
-                        operation.execute()
-                    else:
-                        print(f"Wrong operation code, please, try again...")
+                        if operation == "\n" or operation == '':
+                            print("Continuing...")
+                        elif operation:
+                            operation.execute()
+                        else:
+                            print(f"Wrong operation code, please, try again...")
 
 
         except KeyboardInterrupt:
             self.close_application()
 
-    def connection_prompt(self):
+    def messaging_manager(self):
+        while self.is_active and not self.stop_event.is_set():
+            if self.target_ip is None or self.target_port is None:
+                continue
+            if not self.connection_manager.queue_is_empty():
+                self.connection_manager.send_fragment(self.target_ip, self.target_port)
+
+
+    def receiving_manager(self):
+        timeout_count = 0
+        while True:
+            if not self.is_active:
+                break
+
+            self.response_on_connection_attempt()
+            time.sleep(1)
+
+            while True:
+                if not self.connected or timeout_count >= 3 or self.stop_event.is_set():
+                    print(f"Connection closed - no response. Press Enter...")
+                    self.target_ip = None
+                    self.target_port = None
+                    self.operation_manager = None
+                    self.connected = False
+                    break
+                try:
+                    data = self.connection_manager.listen_on_port(cfg.TIMEOUT_TIME_EDGE)
+
+                    if not data:
+                        timeout_count += 1
+                        print(f"Keep-Alive messages missed: {timeout_count}")
+                        continue
+                    data = data[0]
+                    # print(f"{data}")
+
+                    header = HeaderHelper.parse_header(data[0])
+                    flags = HeaderHelper.parse_flags(header[3])
+                    body = data[1]
+                    crc = data[2]
+
+                    if flags["DATA"] and header[2] == cfg.MSG_TYPES["CTRL"] and not (
+                            flags["ACK"] or flags["NACK"]):
+                        self.connection_manager.processing = True
+                        self.connection_manager.process_data(header)
+                        print(f"{cfg.OPERATION_PROMPT}")
+
+                    elif flags["DATA"] and header[2] == cfg.MSG_TYPES["CTRL"]:
+                        self.connection_manager.handle_data_transmission(header, flags)
+
+                    elif flags["K-A"]:
+                        timeout_count = 0
+
+                    elif flags["FIN"]:
+                        pass
+
+                except Exception as e:
+                    if not self.is_active:
+                        print("Error receiving data...")
+                    else:
+                        print(f"An exception occurred: {e}")
+
+
+    def keep_alive_manager(self):
+        try:
+            while self.is_active and not self.stop_event.is_set():
+                if not self.connected:
+                    self.sender_connection_establishment()
+
+                time.sleep(1)
+                while True:
+                    if not self.connected or self.connection_manager.processing:
+                        break
+
+                    self.connection_manager.queue_up_k_a(
+                        k_a_to_send=SendControl(
+                            message=Message(
+                                message_type=cfg.MSG_TYPES["CTRL"],
+                                flags={
+                                    "K-A": True
+                                }
+                            )
+                        )
+                    )
+                    time.sleep(4.8)
+        except Exception:
+            print(f"Keep-alive messages interrupted")
+
+
+    def sender_connection_establishment(self):
         try:
             connection_prompt = str(input("Do you want to establish connection? (y/n):"))
             if connection_prompt.lower() == "y":
@@ -97,69 +176,34 @@ class Node:
                     self.target_ip = target_ip
                     self.target_port = target_port
 
-                    self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+                    if not self.connected:
+                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
 
-                    self.operation_manager.get_operation("i").execute()
-                    time.sleep(1)
+                        self.operation_manager.get_operation("i").execute()
 
             elif connection_prompt.lower() == "n":
                 self.is_active = False
                 self.close_application()
             elif connection_prompt.lower() == '':
-                print("Continuing...")
+                pass # to escape the input
             else:
                 print(f"Wrong choice, try again...")
         except ValueError as e:
             print("Processing...\nPress Enter")
+        except KeyboardInterrupt:
+            self.close_application()
 
 
     def response_on_connection_attempt(self):
-        with self.thread_lock:
-            self.target_ip, self.target_port, self.connected = self.connection_manager.connection_establishment()
-            self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
-
-
-    def messaging_manager(self):
-        while self.is_active:
-            if self.target_ip is None or self.target_port is None:
-                continue
-            if not self.connection_manager.queue_is_empty():
-                self.connection_manager.send_fragment(self.target_ip, self.target_port)
-
-
-    def listen_for_messages(self):
-        """
-        Client listens at the receiving port for messages.
-        When a connection is not established, the connection_establishment method which handles the handshake responses is being called.
-        When the connection is established, the client listens on the port for messages.
-
-        :return:
-        """
-        print("Listening for incoming messages...")
-        while not self.stop_event.is_set():
-
-            if not self.connected:
-                self.response_on_connection_attempt()
-
-            while self.connected and not self.stop_event.is_set():
-                try:
-                    data = self.connection_manager.receive_data()
-
-                    if data:
-                        with self.thread_lock:
-                            ReceivingManager(data=data[0], connection_handler=self.connection_manager).operate(self.waiting_for_response)
-
-                            self.waiting_for_response = False
-
-                            print(cfg.OPERATION_PROMPT)
-                            self.printed = True
-
-
-                except Exception as e:
-                    if not self.is_active:
-                        print("Disconnected...")
-                    else:
-                        print(f"An exception occurred: {e}")
+        while not self.connected and not self.stop_event.is_set() and self.is_active:
+            response = self.connection_manager.receiver_connection_establishment()
+            if response is not None:
+                self.target_ip = response[0]
+                self.target_port = response[1]
+                self.connected = response[2]
+            if self.connected:
+                self.connection_manager.processing = False
+                self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
 
 
     def close_application(self):
@@ -176,8 +220,6 @@ class Node:
             print("Disconnected")
 
         self.is_active = False
-        self.waiting_for_response = False
-
 
     @classmethod
     def clear_stdin(cls):

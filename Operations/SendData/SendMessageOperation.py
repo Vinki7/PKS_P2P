@@ -31,11 +31,12 @@ class SendMessageOperation(Operation):
                 frag_id=text_message.fragment_count,
                 message_type=cfg.MSG_TYPES["CTRL"],
                 flags={
-                    "FRAG_COUNT":True
+                    "DATA":True
                 }
             )
         )
 
+        self.connection_manager.processing = True
         self.connection_manager.queue_up_message(
             send_frag_count,
             priority=True
