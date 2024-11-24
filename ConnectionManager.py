@@ -178,7 +178,6 @@ class ConnectionManager:
             try:
                 # Receive data from the connection handler
                 data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 2)
-                # print(f"data:{data}")
                 if not data:
                     if len(received_fragments) == 0:
                         timeout_count += 1

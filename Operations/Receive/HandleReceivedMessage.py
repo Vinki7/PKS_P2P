@@ -7,7 +7,6 @@ class HandleReceivedMessage(Operation):
         self.time_started = time_started
         self.time_ended = time_ended
 
-
         self.complete_message = ""
 
     def execute(self):
