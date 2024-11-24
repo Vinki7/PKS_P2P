@@ -90,12 +90,11 @@ class ConnectionManager:
         fragment: Fragment = self.queue.pop(0)
         raw = fragment.construct_raw_fragment()
         self.sending_socket.sendto(raw, (target_ip, target_port))
-        # print(f"Sent: {raw}")
 
     def listen_on_port(self, timeout = None) -> tuple | None:
         """
         Listens on socket and waits for the incoming data. Output is list which consists of encoded header and data
-        :return: ([header, data], source_socket_pair)
+        :return: ((header, body, crc), source_socket_pair)
         """
         self.receiving_socket.settimeout(timeout)
         try:
@@ -383,65 +382,50 @@ class ConnectionManager:
 # --------------------- end region ---------------------
 
 # --------------------- region Connection closing ---------------------
-    def close_connection_request(self, target_ip:str, target_port:int):
+    def close_connection_request(self):
         """
         Sends a close connection request message - FIN flag in message
         :return:
         """
-
-        desired_flags = dict()
-        desired_flags[cfg.FIN[0]] = True
-        fin_msg = f"{self.sending_port}"
-        sequence_number = 0
-
-        header = HeaderHelper.construct_header(
-            seq_num=sequence_number,
-            msg_type=cfg.MSG_TYPES["CTRL"],
-            flags=HeaderHelper.construct_flag_segment(desired_flags),
+        self.act_seq += 1
+        self.queue_up_message(
+            message_to_send=SendControl(message=Message(message_type=cfg.MSG_TYPES["CTRL"],flags={"FIN": True})),
+            priority=True
         )
 
-        self.send_fin(header, fin_msg.encode(), target_ip, target_port)
 
-    def connection_closing(self) -> bool:
+    def connection_closing(self, header, flags:dict) -> bool:
         """
         Handles logic of the phase, when connection exists and is in closing process.
-        The client waits for [CONN] or [CONN][ACK] message to establish a connection.
+        The client waits for [FIN] or [FIN][ACK] message to close the connection.
 
-        :return: tuple = ( target_ip , target_port )
+        :return: bool = true if connection closed else False
         """
-        raw_data = self.listen_on_port()
-        response = raw_data[0]
 
-        header = HeaderHelper.parse_header(response[0])
-
-        flags = HeaderHelper.parse_flags(header[3])
+        message:Message = Message(seq=self.act_seq, message_type=cfg.MSG_TYPES["CTRL"])
 
         if flags["FIN"] and not flags["ACK"]:
             print("\nReceived FIN flag, sending FIN+ACK...")
 
-            self._send_ack(prev_flag="FIN")
+            self.act_seq = header[0]
+            message.flags = {"FIN": True, "ACK": True}
 
-            return False
+            self.queue_up_message(SendControl(message=message))
+
+            data = self.listen_on_port(cfg.TIMEOUT_TIME_EDGE*3)
+            if not data:
+                return False
+            else:
+                print("Received ACK flag, connection closed...\n")
+
+                return True
 
         elif flags["FIN"] and flags["ACK"]:
             print("Received FIN+ACK flag, connection closed, sending ACK...\n")
-
-            self._send_ack(prev_flag="")
-
-            return True
-
-        elif flags["ACK"]:
-            print("Received ACK flag, connection closed...\n"
-                  "Press ENTER...")
+            message.flags = {"ACK": True}
+            self.queue_up_message(SendControl(message=message))
 
             return True
 
         return False
-
-    def send_fin(self, header:bytes, message:bytes, target_ip:str, target_port:int):
-        """
-        Send a connection termination request (flag - FIN)
-        :return:
-        """
-        self.sending_socket.sendto(header + message, (target_ip, target_port))
 # --------------------- end region ---------------------

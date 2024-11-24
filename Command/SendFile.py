@@ -15,7 +15,8 @@ class SendFile(Send):
     def send(self, fragment_size: int) -> list[Fragment]:
         data_size = fragment_size - HeaderHelper.get_header_length_add_crc16(True)
 
-        message = f"File size: {len(self.file.data)} B\n"
+        message = (f"File name: {self.file.file_name}\n"
+                   f"File size: {len(self.file.data)} B\n")
 
         fragments:list[Fragment] = [
             Fragment(

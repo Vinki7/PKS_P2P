@@ -50,8 +50,6 @@ class Node:
 
         try:
             while not self.stop_event.is_set() and self.is_active:
-
-
                 while self.connected and not self.connection_manager.processing:
 
                     # Check if another thread needs input
@@ -73,9 +71,9 @@ class Node:
                         else:
                             print(f"Wrong operation code, please, try again...")
 
-
         except KeyboardInterrupt:
             self.close_application()
+
 
 # --------------------- region Managers ---------------------
     def messaging_manager(self):
@@ -98,11 +96,12 @@ class Node:
 
             while True:
                 if not self.connected or timeout_count >= 3 or self.stop_event.is_set():
-                    print(f"Connection closed - no response. Press Enter...")
+                    print(f"Connection closed - {"on request" if not self.connected else "timed out"}. Press Enter...")
                     self.target_ip = None
                     self.target_port = None
                     self.operation_manager = None
                     self.connected = False
+                    self.connection_manager.act_seq = 0
                     break
                 try:
                     data = self.connection_manager.listen_on_port(cfg.TIMEOUT_TIME_EDGE)
@@ -132,7 +131,9 @@ class Node:
                         self.connection_manager.processing = False
 
                     elif flags["FIN"]:
-                        pass
+                        is_closed = self.connection_manager.connection_closing(header, flags)
+                        self.connected = not is_closed
+
 
                 except Exception as e:
                     if not self.is_active:
@@ -178,13 +179,15 @@ class Node:
                 time.sleep(0.2)  # wait for possible connection request
 
                 if not self.connected:
-                    self.target_ip = target_ip
-                    self.target_port = target_port
+                    if not SocketHelper.is_valid_ip(ip) or not SocketHelper.is_valid_port(receiving_port):
+                        print(f"Invalid IP or port, please try again")
+                    else:
+                        self.target_ip = target_ip
+                        self.target_port = target_port
 
-                    if not self.connected:
-                        self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
-
-                        self.operation_manager.get_operation("i").execute()
+                        if not self.connected:
+                            self.operation_manager = OperationManager(self.connection_manager, self.target_ip, self.target_port)
+                            self.operation_manager.get_operation("i").execute()
 
             elif connection_prompt.lower() == "n":
                 self.is_active = False
@@ -218,15 +221,9 @@ class Node:
         Close the connection with another peer - usage of FIN flag in message
         :return:
         """
-
         if self.connected:
-            self.stop_event.set()
-            self.connected = False
-            self.connection_manager.sending_socket.close()
-            # self.connection_manager.close_connection_request(self.target_ip, self.target_port)
-            print("Disconnected")
-
-        self.is_active = False
+            self.connection_manager.close_connection_request()
+        print("Closing application...")
 # --------------------- end region ---------------------
 
     @classmethod
@@ -238,20 +235,24 @@ class Node:
         sys.stdout.flush()
 
 if __name__ == "__main__":
-    while True:
-        ip = str(input("Enter IP: "))
-        receiving_port = int(input("Enter port for receiving: "))
+    try:
+        while True:
+            ip = str(input("Enter IP: "))
+            receiving_port = int(input("Enter port for receiving: "))
 
-        if SocketHelper.is_valid_ip(ip) and SocketHelper.is_valid_port(receiving_port):
-            sending_port = receiving_port - 1
+            if SocketHelper.is_valid_ip(ip) and SocketHelper.is_valid_port(receiving_port):
+                sending_port = receiving_port - 1
 
-            client_interface = Node(ip, sending_port, ip, receiving_port)
-            client_interface.run()
+                client_interface = Node(ip, sending_port, ip, receiving_port)
+                client_interface.run()
 
-            break
-        else:
-            print(f"Invalid IP or port. To try again, enter y (yes):")
-            user_input = str(input()).lower()
-            if not user_input == "y":
                 break
-
+            else:
+                print(f"Invalid IP or port. To try again, enter y (yes):")
+                user_input = str(input()).lower()
+                if not user_input == "y":
+                    break
+    except KeyboardInterrupt:
+        print("Application closed due to user's input (keyboard interrupt)")
+    except Exception:
+        print("An unexpected exception occurred. Closing the application...")
