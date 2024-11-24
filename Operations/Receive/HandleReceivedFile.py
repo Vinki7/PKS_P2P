@@ -31,16 +31,18 @@ class HandleReceivedFile(Operation):
             data=self.received_file
         )
 
-
         self.connection_manager.input_in_progress = True
         print("To continue, press Enter...")
         time.sleep(1)
         destination_path = str(input(f"Received file: {name_fragment.data.decode()}. Enter a destination directory:\n"
                                      f"→: "))
-        if self.is_directory(destination_path):
-            file_absolute_path = destination_path+"\\"+name_fragment.data.decode()
-            file.write_file(file_absolute_path)
-            print(f"File at: {file_absolute_path}")
+        try:
+            if self.is_directory(destination_path):
+                file_absolute_path = destination_path+"\\"+name_fragment.data.decode()
+                file.write_file(file_absolute_path)
+                print(f"File at: {file_absolute_path}")
+        except:
+            print("Invalid path...")
         self.connection_manager.input_in_progress = False
 
 

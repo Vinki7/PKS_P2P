@@ -22,14 +22,14 @@
 |          |                |   to znamená, že prijímajúca strana deteguje chybu pri prenose).
 +----------+----------------+
 |          |                |   Prijímajúca strana musí byť schopná oznámiť odosielateľovi správne aj
-|   7      | 	   no       |   nesprávne doručenie fragmentov. Pri nesprávnom doručení fragmentu
+|   7      | 	   yes      |   nesprávne doručenie fragmentov. Pri nesprávnom doručení fragmentu
 |          |                |   vyžiada znovu poslať poškodené dáta.
 +----------+----------------+
 |          |                |   Možnosť odoslať 2MB súbor do 60 sekúnd a uložiť ho na prijímacom
-|   8      | 	   no       |    uzle ako rovnaký súbor.
+|   8      | 	   yes      |    uzle ako rovnaký súbor.
 |          |                |
 +----------+----------------+
 |          |                |   Možnosť nastaviť na uzle miesto, kam sa súbor uloží po prijatí.
-|   9      | 	   no       |
+|   9      | 	   yes      |
 |          |                |
 +----------+----------------+

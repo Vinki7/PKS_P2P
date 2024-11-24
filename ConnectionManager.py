@@ -98,7 +98,7 @@ class ConnectionManager:
         """
         self.receiving_socket.settimeout(timeout)
         try:
-            data, source_socket_pair = self.receiving_socket.recvfrom(self.fragment_size)
+            data, source_socket_pair = self.receiving_socket.recvfrom(self.fragment_size+HeaderHelper.get_header_length_add_crc16(True))
             self.receiving_socket.settimeout(None)
             return FragmentHelper.parse_fragment(data), source_socket_pair
 
@@ -176,7 +176,7 @@ class ConnectionManager:
         while len(acked_fragments) < total_fragments and timeout_count <= cfg.TIMEOUT_TIME_EDGE:
             try:
                 # Receive data from the connection handler
-                data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 2)
+                data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 5)
                 if not data:
                     if len(received_fragments) == 0:
                         timeout_count += 1
@@ -196,6 +196,8 @@ class ConnectionManager:
                 print(f"Error during reception: {e}")
                 break
 
+        while len(self.received_fragments) > 0:
+            pass
         time_ended = time.time()
         self.arq_active=False
         acked_fragments = self.acked_temp.copy()
@@ -392,7 +394,6 @@ class ConnectionManager:
             message_to_send=SendControl(message=Message(message_type=cfg.MSG_TYPES["CTRL"],flags={"FIN": True})),
             priority=True
         )
-
 
     def connection_closing(self, header, flags:dict) -> bool:
         """

@@ -1,17 +1,37 @@
 # Constant definition for message flags
-import crcmod
+# import crcmod
 
 # Create a CRC-16 function with:
 # - Polynomial: 0x11021 (common for CRC-16-CCITT)
 # - Initial value: 0xFFFF
 # - Forward processing (rev=False)
 # - No final XOR (xorOut=0x0000)
-CRC16_FUNC = crcmod.mkCrcFun(
-    0x11021,
-    initCrc=0xFFFF,
-    rev=False,
-    xorOut=0x0000
-)
+def calculate_crc16(data: bytes, poly: int = 0x1021, init: int = 0xFFFF) -> int:
+    """
+    Calculate the CRC16 checksum for a given data input.
+
+    :param data: The data as a bytes object.
+    :param poly: The CRC polynomial (default is 0x1021 for CRC16-CCITT).
+    :param init: The initial CRC value (default is 0xFFFF for CRC16-CCITT).
+    :return: The computed CRC16 checksum as an integer.
+    """
+    crc = init
+    for byte in data:
+        crc ^= (byte << 8)  # Align the byte with the CRC register
+        for _ in range(8):  # Process each bit
+            if crc & 0x8000:  # Check if the highest bit is set
+                crc = (crc << 1) ^ poly
+            else:
+                crc <<= 1
+            crc &= 0xFFFF  # Ensure CRC remains within 16 bits
+    return crc
+
+# CRC16_FUNC = crcmod.mkCrcFun(
+#     0x11021,
+#     initCrc=0xFFFF,
+#     rev=False,
+#     xorOut=0x0000
+# )
 
 OPERATION_PROMPT = ("Select operation:"
                     "\n- send message (m)"
@@ -19,7 +39,6 @@ OPERATION_PROMPT = ("Select operation:"
                     "\n- send corrupted fragment (t)"
                     "\n- set fragment size (s)"
                     "\n- close connection (c)"
-                    "\n- exit (e)"
                     "\n→: ")
 
 KEEP_ALIVE = ("K-A", 1)

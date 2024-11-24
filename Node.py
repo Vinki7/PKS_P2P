@@ -1,6 +1,7 @@
 import sys
 import threading
 import time
+from socket import getaddrinfo
 
 from Command.SendControl import SendControl
 from ConnectionManager import ConnectionManager
@@ -235,8 +236,8 @@ class Node:
         sys.stdout.flush()
 
 if __name__ == "__main__":
-    try:
-        while True:
+    while True:
+        try:
             ip = str(input("Enter IP: "))
             receiving_port = int(input("Enter port for receiving: "))
 
@@ -252,7 +253,14 @@ if __name__ == "__main__":
                 user_input = str(input()).lower()
                 if not user_input == "y":
                     break
-    except KeyboardInterrupt:
-        print("Application closed due to user's input (keyboard interrupt)")
-    except Exception:
-        print("An unexpected exception occurred. Closing the application...")
+        except KeyboardInterrupt:
+            print("Application reset due to user's input (keyboard interrupt)")
+        except ValueError:
+            print(f"Invalid IP or port. To try again, enter y (yes):")
+            user_input = str(input()).lower()
+            if not user_input == "y":
+                break
+        except Exception as e:
+            print(f"An unexpected exception occurred: {e} \n"
+                  f"Closing the application...")
+            break

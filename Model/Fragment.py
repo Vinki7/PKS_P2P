@@ -25,7 +25,7 @@ class Fragment:
 
     def construct_raw_fragment(self) -> bytes:
         raw_data = self.header + self.data
-        crc = cfg.CRC16_FUNC(raw_data).to_bytes(2, byteorder='big')
+        crc = cfg.calculate_crc16(raw_data).to_bytes(2, byteorder='big')
 
         if self.corrupted:
             corrupted_part = b"|C|"

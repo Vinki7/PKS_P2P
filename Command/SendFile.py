@@ -12,10 +12,11 @@ class SendFile(Send):
         self.file = file
         self.fragment_count = self._count_fragments()
 
-    def send(self, fragment_size: int) -> list[Fragment]:
-        data_size = fragment_size - HeaderHelper.get_header_length_add_crc16(True)
+    def send(self, data_size: int) -> list[Fragment]:
+        fragment_size = data_size + HeaderHelper.get_header_length_add_crc16(True)
 
         message = (f"File name: {self.file.file_name}\n"
+                   f"File path: {self.file.file_path}\n"
                    f"File size: {len(self.file.data)} B\n")
 
         fragments:list[Fragment] = [
@@ -27,8 +28,8 @@ class SendFile(Send):
             )
         ]
 
-        if len(self.file.data) > data_size:
-            message += f"Fragment size: {fragment_size} B\n"
+        if len(self.file.data) > fragment_size:
+            message += f"Fragment size (with header and CRC): {fragment_size} B\n"
             fragments = self._fragment_data(data_size, fragments)
         else:
             fragments.append(
@@ -43,7 +44,7 @@ class SendFile(Send):
 
         message += f"Total fragments sent: {self.fragment_count}"
         if self.fragment_count > 1:
-            size_of_last = fragments[self.fragment_count - 1].fragment_size
+            size_of_last = fragments[self.fragment_count-1].fragment_size
             if size_of_last < fragment_size:
                 message += f"\nSize of last fragment: {size_of_last} B"
 
@@ -71,4 +72,4 @@ class SendFile(Send):
         return fragments
 
     def _count_fragments(self):
-        return math.ceil(len(self.file.data) / (self.file.fragment_size - HeaderHelper.get_header_length_add_crc16(True))) + 1 #for file name with extension
+        return math.ceil(len(self.file.data) / (self.file.fragment_size + HeaderHelper.get_header_length_add_crc16(True))) + 1 #for file name with extension

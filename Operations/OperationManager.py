@@ -29,8 +29,6 @@ class OperationManager:
             return SetFragmentSizeOperation(self.connection_handler)
         elif operation_code == "c":
             return CloseConnectionOperation(self.connection_handler)
-        # elif operation_code == "e":
-        #     return ExitOperation(self.application)
         elif operation_code == "\n" or operation_code == '':
             return  operation_code
         else:

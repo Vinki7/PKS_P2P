@@ -21,7 +21,7 @@ class SendFileOperation(Operation):
             message_type = cfg.MSG_TYPES["FILE"]
         )
 
-        if file.file_exists():
+        try:
 
             self.connection_manager.act_seq += 2
 
@@ -30,7 +30,7 @@ class SendFileOperation(Operation):
             file.read_file()
 
             file_to_send = SendFile(
-                file=file,
+                file=file
             )
 
             send_frag_count = SendControl(
@@ -54,5 +54,5 @@ class SendFileOperation(Operation):
             self.connection_manager.queue_up_message(
                 file_to_send
             )
-        else:
-            print("Invalid path. Please, try again.")
+        except Exception as e:
+            print(f"File unreachable - possible lack of admin rights or invalid path.: {e}")

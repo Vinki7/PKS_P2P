@@ -11,15 +11,15 @@ class SendText(Send):
         self.message = message
         self.fragment_count = self._count_fragments()
 
-    def send(self, fragment_size: int) -> list[Fragment] :
-        data_size = fragment_size - HeaderHelper.get_header_length_add_crc16(True)
+    def send(self, data_size: int) -> list[Fragment] :
+        fragment_size = data_size + HeaderHelper.get_header_length_add_crc16(True)
 
         message = f"Text size: {len(self.message.data)} B\n"
 
         fragments:list[Fragment] = []
 
         if len(self.message.data) > data_size:
-            message += f"Fragment size: {fragment_size} B\n"
+            message += f"Fragment size (with header and CRC): {fragment_size} B\n"
             fragments = self._fragment_data(data_size)
         else:
             fragments.append(
@@ -63,4 +63,4 @@ class SendText(Send):
         return fragments
 
     def _count_fragments(self):
-        return math.ceil(len(self.message.data) / (self.message.fragment_size - HeaderHelper.get_header_length_add_crc16(True)))
+        return math.ceil(len(self.message.data) / (self.message.fragment_size + HeaderHelper.get_header_length_add_crc16(True)))

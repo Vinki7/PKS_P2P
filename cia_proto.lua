@@ -9,13 +9,27 @@ local f_msg_type = ProtoField.uint8("cia.msg_type", "Message Type", base.DEC, {
     [1] = "FILE",
     [2] = "CTRL",
 })
-local f_flags = ProtoField.uint8("cia.flags", "Flags", base.DEC)
+local f_flags = ProtoField.uint8("cia.flags", "Flags", base.DEC), {
+    [0] = "K-A",
+    [1] = "CONN",
+    [2] = "ACK",
+    [3] = "FIN",
+    [4] = "NAME",
+    [5] = "NACK",
+    [6] = "FRAG",
+    [7] = "DATA"
+
+}
 local f_frag_size = ProtoField.uint16("cia.frag_size", "Fragment Size", base.DEC)
 local f_crc16 = ProtoField.uint16("cia.crc", "CRC16", base.HEX)
 local f_data = ProtoField.bytes("cia.data", "Data")
 
 -- Add the fields to the protocol
 cia_proto.fields = { f_seq_num, f_frag_id, f_msg_type, f_flags, f_frag_size, f_crc16, f_data }
+
+-- Define a unique color filter slot for message types
+local CTRL_COLOR_SLOT = 1  -- Assign slot 1 for CTRL messages
+local DATA_COLOR_SLOT = 2  -- Assign slot 2 for FILE and TEXT messages
 
 -- Dissector function
 function cia_proto.dissector(buffer, pinfo, tree)
@@ -79,20 +93,16 @@ function cia_proto.dissector(buffer, pinfo, tree)
     end
 
     -- Colorize data and control messages
-    if msg_type == 0 then  -- Data message
-        pinfo.cols.info:append(string.format(" [TEXT | Seq=%d | Frag=%d]", seq_num, frag_id))
-        -- Apply color for data messages (Green background, White text)
-        pinfo.private_flags = 0x01 -- This applies a color rule for "Data"
-    elseif msg_type == 1 then  -- File message
-        pinfo.cols.info:append(string.format(" [FILE | Seq=%d | Frag=%d]", seq_num, frag_id))
-        -- Apply color for data messages (Blue background)
-        pinfo.private_flags = 0x05 -- Color for file-related messages
-    elseif msg_type == 2 then  -- Control message
+    -- Add custom coloring rules based on message type
+    if msg_type == 2 then
+        -- CTRL Message
         pinfo.cols.info:append(string.format(" [CTRL | Seq=%d | Frag=%d]", seq_num, frag_id))
-        -- Apply color for control messages (Gray background)
-        pinfo.private_flags = 0x08 -- Color for control messages
-    else
-        pinfo.cols.info:append(" [UNKNOWN]")
+        pinfo.private["color_filter_slot"] = CTRL_COLOR_SLOT
+    elseif msg_type == 1 or msg_type == 0 then
+        -- FILE and TEXT Messages
+        local msg_label = (msg_type == 1) and "FILE" or "TEXT"
+        pinfo.cols.info:append(string.format(" [%s | Seq=%d | Frag=%d]", msg_label, seq_num, frag_id))
+        pinfo.private["color_filter_slot"] = DATA_COLOR_SLOT
     end
 end
 

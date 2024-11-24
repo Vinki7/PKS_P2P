@@ -1,8 +1,6 @@
 import os
 from typing import Optional
 
-from UtilityHelpers.HeaderHelper import HeaderHelper
-
 
 class Message:
     def __init__(self, file_path: str="", seq:int = 0, frag_id:int = 0,
@@ -51,13 +49,21 @@ class Message:
         except IOError as e:
             raise IOError(f"Error writing file: {e}")
 
-    def file_exists(self) -> bool:
+    def path_exists(self) -> bool:
         """
-        Checks if the file exists in the given path.
+        Checks if the file exists in the file structure.
 
         :return: True if the file exists, False otherwise.
         """
         return os.path.exists(self.file_path)
+
+    def file_exists(self) -> bool:
+        """
+        Checks if the file exists in the file structure.
+
+        :return: True if the file exists, False otherwise.
+        """
+        return os.path.isfile(self.file_path)
 
     @staticmethod
     def search_file(file_name: str, search_path: str) -> Optional[str]:
@@ -72,9 +78,3 @@ class Message:
             if file_name in files:
                 return os.path.join(root, file_name)
         return None
-
-    def __repr__(self):
-        """
-        Representation of the File object.
-        """
-        return f"File(name={self.file_name}, path={self.file_path}, extension={self.file_extension})"
