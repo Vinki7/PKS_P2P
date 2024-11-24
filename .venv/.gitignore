@@ -79,6 +79,7 @@ ehthumbs.db
 
 # Logs
 *.log
+__pycache__/
 
 # Secrets and configuration
 .env
@@ -97,6 +98,7 @@ dmypy.json.lock
 
 # C Extensions
 *.so
+*.pyc
 
 # Docker files
 *.pid
