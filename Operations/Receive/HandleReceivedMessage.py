@@ -18,7 +18,8 @@ class HandleReceivedMessage(Operation):
 
         print(f"The message was received successfully. Time elapsed: {(self.time_ended - self.time_started):.4f} s"
               f"\nMessage:"
-              f"\n→: {self.complete_message}")
+              f"\n→: {self.complete_message}\n"
+              f"Press ENTER to continue...")
 
     def order_fragments(self) -> list[Fragment]:
         ordered_fragments = sorted(self.fragments, key=lambda fragment: fragment.message.frag_id)

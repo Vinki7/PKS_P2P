@@ -102,17 +102,18 @@ class Node:
                     self.target_port = None
                     self.operation_manager = None
                     self.connected = False
-                    self.connection_manager.act_seq = 0
+                    self.connection_manager.receiving_socket.close()
+                    self.connection_manager.sending_socket.close()
+                    self.connection_manager = ConnectionManager(self.sending_ip, self.sending_port, self.receiving_ip, self.receiving_port)
                     break
                 try:
-                    data = self.connection_manager.listen_on_port(cfg.TIMEOUT_TIME_EDGE)
+                    data = self.connection_manager.listen_on_port(cfg.TIMEOUT_TIME_EDGE+0.1)
 
                     if not data:
                         timeout_count += 1
                         print(f"Keep-Alive messages missed: {timeout_count}")
                         continue
 
-                    self.connection_manager.processing = True
                     data = data[0]
 
                     header = HeaderHelper.parse_header(data[0])
@@ -120,16 +121,17 @@ class Node:
 
                     if flags["DATA"] and header[2] == cfg.MSG_TYPES["CTRL"] and not (
                             flags["ACK"] or flags["NACK"]):
+                        self.connection_manager.processing = True
                         self.clear_stdin()
                         self.connection_manager.process_data(header)
-                        print(f"{cfg.OPERATION_PROMPT}")
 
                     elif flags["DATA"] and header[2] == cfg.MSG_TYPES["CTRL"]:
+                        self.connection_manager.processing = True
                         self.connection_manager.handle_data_transmission(header, flags)
+                        self.connection_manager.processing = False
 
                     elif flags["K-A"]:
                         timeout_count = 0
-                        self.connection_manager.processing = False
 
                     elif flags["FIN"]:
                         is_closed = self.connection_manager.connection_closing(header, flags)
@@ -164,7 +166,7 @@ class Node:
                             )
                         )
                     )
-                    time.sleep(4.8)
+                    time.sleep(5)
         except Exception:
             print(f"Keep-alive messages interrupted")
 # --------------------- end region ---------------------

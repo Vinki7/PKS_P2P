@@ -119,15 +119,16 @@ class ConnectionManager:
     def process_data(self, header):
         frag_count = header[1]
 
+        self.act_seq = header[0] + 1
         fragments, time_started, time_ended = self.receive_data(frag_count)
 
         if fragments[0].message.message_type == cfg.MSG_TYPES["TEXT"]:
-            self.processing=False
+            self.processing = False
             HandleReceivedMessage(fragments=fragments,
                                   time_started=time_started,
                                   time_ended=time_ended).execute()
         else:
-            self.processing=False
+            self.processing = False
             HandleReceivedFile(
                 fragments=fragments,
                 time_started=time_started,
@@ -173,10 +174,10 @@ class ConnectionManager:
 
         print("Starting fragment reception...")
         time_started = time.time()
-        while len(acked_fragments) < total_fragments and timeout_count <= cfg.TIMEOUT_TIME_EDGE:
+        while len(self.acked_temp) < total_fragments and timeout_count <= cfg.TIMEOUT_TIME_EDGE:
             try:
                 # Receive data from the connection handler
-                data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 5)
+                data = self.listen_on_port(timeout=cfg.TIMEOUT_TIME_EDGE / 2)
                 if not data:
                     if len(received_fragments) == 0:
                         timeout_count += 1
@@ -196,13 +197,14 @@ class ConnectionManager:
                 print(f"Error during reception: {e}")
                 break
 
-        while len(self.received_fragments) > 0:
+        while len(self.acked_temp) < total_fragments-1:
             pass
+
         time_ended = time.time()
         self.arq_active=False
         acked_fragments = self.acked_temp.copy()
         self.acked_temp.clear()
-        print(f"Reception finished: {len(acked_fragments)} fragments received")
+        print(f"Reception finished: {len(acked_fragments)} fragments received\n")
         self.arq_active = False
         return acked_fragments, time_started, time_ended
 
@@ -244,7 +246,6 @@ class ConnectionManager:
                             fragment_size=parsed_header[4]
                         )),priority=True
                     )
-
 
     def retransmit_fragment(self, fragment_id: int):
         fragment = self._get_waiting_by_id(fragment_id)
@@ -389,9 +390,8 @@ class ConnectionManager:
         Sends a close connection request message - FIN flag in message
         :return:
         """
-        self.act_seq += 1
         self.queue_up_message(
-            message_to_send=SendControl(message=Message(message_type=cfg.MSG_TYPES["CTRL"],flags={"FIN": True})),
+            message_to_send=SendControl(message=Message(seq=self.act_seq,message_type=cfg.MSG_TYPES["CTRL"],flags={"FIN": True})),
             priority=True
         )
 
@@ -402,13 +402,12 @@ class ConnectionManager:
 
         :return: bool = true if connection closed else False
         """
-
+        self.act_seq = header[0] + 1
         message:Message = Message(seq=self.act_seq, message_type=cfg.MSG_TYPES["CTRL"])
 
         if flags["FIN"] and not flags["ACK"]:
             print("\nReceived FIN flag, sending FIN+ACK...")
 
-            self.act_seq = header[0]
             message.flags = {"FIN": True, "ACK": True}
 
             self.queue_up_message(SendControl(message=message))

@@ -63,4 +63,6 @@ class SendText(Send):
         return fragments
 
     def _count_fragments(self):
-        return math.ceil(len(self.message.data) / (self.message.fragment_size + HeaderHelper.get_header_length_add_crc16(True)))
+        frag_count = math.ceil(len(self.message.data) / self.message.fragment_size)
+        print(f"Frag_count:{frag_count}")
+        return frag_count

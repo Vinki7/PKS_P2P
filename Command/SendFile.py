@@ -28,7 +28,7 @@ class SendFile(Send):
             )
         ]
 
-        if len(self.file.data) > fragment_size:
+        if len(self.file.data) > data_size:
             message += f"Fragment size (with header and CRC): {fragment_size} B\n"
             fragments = self._fragment_data(data_size, fragments)
         else:
@@ -72,4 +72,4 @@ class SendFile(Send):
         return fragments
 
     def _count_fragments(self):
-        return math.ceil(len(self.file.data) / (self.file.fragment_size + HeaderHelper.get_header_length_add_crc16(True))) + 1 #for file name with extension
+        return math.ceil(len(self.file.data) / self.file.fragment_size) + 1 #for file name with extension
