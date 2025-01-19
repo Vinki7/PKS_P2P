@@ -16,6 +16,7 @@ class SendMessageOperation(Operation):
         text = str(input("Enter a message: "))
 
         if text != '':
+            # text = f"___" + self.caesar_cypher(text) + f"___"f
             self.connection_manager.act_seq += 2
 
             text_message = SendText(
@@ -49,3 +50,39 @@ class SendMessageOperation(Operation):
             )
         else:
             print("Invalid message. The message must have at least 1 character...")
+
+    def caesar_cypher(self, text: str):
+        upper = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+                 "U",
+                 "V", "W", "X", "Y", "Z"]
+
+        lower = []
+        for letter in upper:
+            lower.append(letter.lower())
+
+        num = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
+
+        encrypted_text = ""
+        for char in text:
+            if char in upper:
+                actual_position = upper.index(char)
+                relative_position = actual_position + 5
+                print(relative_position)
+                if relative_position >= len(upper):
+                    final_position = relative_position - len(upper)
+                    encrypted_text += f"{upper[final_position]}"
+                else:
+                    final_position = relative_position
+                    encrypted_text += f"{upper[final_position]}"
+            if char in lower:
+                actual_position = lower.index(char)
+                relative_position = actual_position + 5
+                print(relative_position)
+                if relative_position >= len(upper):
+                    final_position = relative_position - len(lower)
+                    encrypted_text += f"{lower[final_position]}"
+                else:
+                    final_position = relative_position
+                    encrypted_text += f"{lower[final_position]}"
+
+        return encrypted_text
